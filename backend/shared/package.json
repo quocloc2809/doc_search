@@ -1,0 +1,10 @@
+{
+    "name": "shared-config",
+    "version": "1.0.0",
+    "description": "Shared configuration and utilities for microservices",
+    "private": true,
+    "dependencies": {
+        "mssql": "^10.0.1",
+        "dotenv": "^16.3.1"
+    }
+}

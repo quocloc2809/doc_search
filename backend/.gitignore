@@ -1,0 +1,29 @@
+# Logs directory
+/logs/
+*.log
+
+# Environment files - NEVER commit these
+.env
+.env.production
+.env.local
+**/.env
+**/.env.production
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# PM2
+.pm2/
