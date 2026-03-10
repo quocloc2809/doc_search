@@ -36,7 +36,7 @@ router.get('/', async (req, res) => {
                 doc.AssignedGroupID,
                 doc.CompletedDate,
                 doc.ReviewNote,
-                COALESCE(grp.GroupName, '') as GroupName
+                COALESCE(grp.RecursiveGroupName, '') as GroupName
             FROM dbo.WF_Incoming_Docs doc
             LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = doc.AssignedGroupID
             ORDER BY doc.CreatedDate DESC, doc.DocumentID DESC
