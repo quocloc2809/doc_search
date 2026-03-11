@@ -12,6 +12,8 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .incoming-search-input {
@@ -100,9 +102,4 @@
 .common-button.button-muted {
   background: #6b7280;
   border-color: #6b7280;
-}
-
-.common-button.button-filter {
-  background: #0ea5e9;
-  border-color: #0ea5e9;
 }

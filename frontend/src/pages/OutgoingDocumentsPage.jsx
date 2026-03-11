@@ -3,9 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useDepartments, useFileDownload, useOutgoingDocuments } from '../common/hooks'
 import { APP_ROUTES } from '../common/routing/routes'
 import { CommonTable } from '../common/table'
-import { Button, ErrorMessage, LoadingSpinner } from '../common/ui'
+import { Button, ErrorMessage, LoadingSpinner, SearchBar } from '../common/ui'
 import { formatDateTime } from '../common/utils'
 import './OutgoingDocumentsPage.css'
+
+const SEARCH_FIELDS = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'DocumentNo', label: 'Số hiệu' },
+  { value: 'DocumentSummary', label: 'Trích yếu' },
+]
 
 function normalizeText(value) {
   if (value === null || value === undefined) {
@@ -29,6 +35,7 @@ export default function OutgoingDocumentsPage() {
     downloadOutgoingFile,
   } = useFileDownload()
   const [searchKeyword, setSearchKeyword] = useState('')
+  const [searchField, setSearchField] = useState('all')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [filters, setFilters] = useState({
     department: 'all',
@@ -89,12 +96,11 @@ export default function OutgoingDocumentsPage() {
         ? true
         : rowYear === filters.year
 
-      const searchableValues = [
-        row?.DocumentNo,
-        row?.DocumentSummary,
-        row?.SignerFullname,
-        row?.GroupName,
-      ]
+      const searchableValues = searchField === 'DocumentNo'
+        ? [row?.DocumentNo]
+        : searchField === 'DocumentSummary'
+          ? [row?.DocumentSummary]
+          : [row?.DocumentNo, row?.DocumentSummary, row?.SignerFullname, row?.GroupName]
 
       const matchesKeyword = keyword
         ? searchableValues.some((value) => normalizeText(value).toLowerCase().includes(keyword))
@@ -102,8 +108,7 @@ export default function OutgoingDocumentsPage() {
 
       return matchesDepartment && matchesYear && matchesKeyword
     })
-  }, [documents, filters.department, filters.year, searchKeyword])
-
+  }, [documents, filters.department, filters.year, searchKeyword, searchField])
   const columns = useMemo(() => ([
     { key: 'DocumentNo', title: 'Số hiệu' },
     { key: 'DocumentSummary', title: 'Trích yếu' },
@@ -152,11 +157,13 @@ export default function OutgoingDocumentsPage() {
 
         <div className="outgoing-toolbar">
           <div className="outgoing-toolbar-left">
-            <input
-              className="outgoing-search-input"
-              value={searchKeyword}
-              onChange={(event) => setSearchKeyword(event.target.value)}
+            <SearchBar
+              searchFields={SEARCH_FIELDS}
+              searchField={searchField}
+              onSearchFieldChange={setSearchField}
+              onSearch={(keyword) => setSearchKeyword(keyword)}
               placeholder="Tìm kiếm văn bản..."
+              style={{ marginBottom: 0 }}
             />
             <Button className="button-filter" onClick={handleOpenFilters}>Bộ lọc</Button>
           </div>
