@@ -26,8 +26,6 @@ function OutgoingDetailPage() {
     const { id } = useParams();
     const { document, isLoading, error } = useOutgoingDocumentDetail(id);
 
-    console.log(document);
-
     const handleBack = () => {
         navigate(APP_ROUTES.OUTGOING_DOCUMENTS);
     };
@@ -87,10 +85,7 @@ function OutgoingDetailPage() {
                             <BreadcrumbSeparator />
                             <BreadcrumbItem>
                                 <BreadcrumbPage>
-                                    Hướng dẫn triển khai thực hiện NQ số 70 ngày
-                                    20/8/2025 của Bộ Chính trị về đảm bảo an
-                                    ninh năng lượng quốc gia đến năm 2030, tầm
-                                    nhìn đến năm 2045
+                                    {document?.DocumentSummary}
                                 </BreadcrumbPage>
                             </BreadcrumbItem>
                         </BreadcrumbList>
@@ -113,7 +108,7 @@ function OutgoingDetailPage() {
                                             Văn bản đi
                                         </p>
                                         <p className='text-white text-2xl font-extrabold leading-tight'>
-                                            55/HD-CĐVEC
+                                            {document?.DocumentNo}
                                         </p>
                                     </div>
                                 </div>
@@ -125,10 +120,7 @@ function OutgoingDetailPage() {
                                 </p>
                                 <p
                                     className={`text-red-600 text-base font-semibold leading-relaxed border-l-4 pl-4 `}>
-                                    Hướng dẫn triển khai thực hiện NQ số 70 ngày
-                                    20/8/2025 của Bộ Chính trị về đảm bảo an
-                                    ninh năng lượng quốc gia đến năm 2030, tầm
-                                    nhìn đến năm 2045
+                                    {document?.DocumentSummary}
                                 </p>
                             </div>
 
@@ -176,7 +168,9 @@ function OutgoingDetailPage() {
                                 <div className='border-2 border-dashed border-gray-200 rounded-xl p-5 text-center'>
                                     <p className='text-4xl mb-2'>📄</p>
                                     <p className='text-indigo-600 font-semibold text-xs mb-4 break-all'>
-                                        55.pdf
+                                        {document?.FileName?.split(
+                                            /[\\/]/,
+                                        ).pop() || 'Không có file đính kèm'}
                                     </p>
                                     <button className='w-full py-2.5 bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 text-white text-sm font-bold rounded-lg transition cursor-pointer border-none'>
                                         <Download className='inline-block mr-2 h-4 w-4' />
