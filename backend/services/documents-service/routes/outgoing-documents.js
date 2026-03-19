@@ -17,8 +17,6 @@ router.get('/', async (req, res) => {
                 doc.DocumentSummary,
                 doc.SignedDate,
                 doc.SignerPosition,
-                doc.SignedUserID,
-                doc.IssuedGroupID,
                 COALESCE(u.Fullname, '') as SignerFullname,
                 COALESCE(g.GroupName, '') as GroupName
             FROM dbo.WF_Outgoing_Docs doc
@@ -26,8 +24,6 @@ router.get('/', async (req, res) => {
             LEFT JOIN dbo.Core_Groups g ON g.GroupID = ABS(doc.IssuedGroupID) AND g.IsView = 0 AND g.IsShow = 1
             ORDER BY doc.CreatedDate DESC, doc.DocumentID DESC
         `);
-
-        console.log(result);
 
         res.json({
             success: true,
@@ -50,22 +46,30 @@ router.get('/:id', async (req, res) => {
 
         const result = await pool.request().query(`
             SELECT
-                doc.DocumentNo,
-                doc.CreatedDate,
-                doc.DocumentSummary,
-                doc.SignedDate,
-                doc.SignerPosition,
-                COALESCE(u.Fullname, '') as SignerFullname,
-                COALESCE(g.GroupName, '') as GroupName,
-                COALESCE(b.Name, '') as BookName,
-                COALESCE(d.Name, '') as TypeName
-            FROM dbo.WF_Outgoing_Docs doc
-            LEFT JOIN dbo.Core_Users u ON u.UserID = doc.SignedUserID
-            LEFT JOIN dbo.Core_Groups g ON g.GroupID = doc.IssuedGroupID
-            LEFT JOIN dbo.WF_Books b ON b.BookID = doc.BookID
-            LEFT JOIN dbo.WF_Doc_Types d on d.TypeID = doc.TypeID
-            WHERE doc.DocumentID = ${id}
+            doc.DocumentNo,
+            doc.CreatedDate,
+            doc.DocumentSummary,
+            doc.SignedDate,
+            doc.SignerPosition,
+            COALESCE(u.Fullname, '') as SignerFullname,
+            COALESCE(g.GroupName, '') as GroupName,
+            COALESCE(b.Name, '') as BookName,
+            COALESCE(d.Name, '') as TypeName,
+            COALESCE(f.FileName, '') as FileName
+        FROM dbo.WF_Outgoing_Docs doc
+        LEFT JOIN dbo.Core_Users u ON u.UserID = doc.SignedUserID
+        LEFT JOIN dbo.Core_Groups g ON g.GroupID = doc.IssuedGroupID
+        LEFT JOIN dbo.WF_Books b ON b.BookID = doc.BookID
+        LEFT JOIN dbo.WF_Doc_Types d ON d.TypeID = doc.TypeID
+        LEFT JOIN (
+            SELECT DocumentID, FileName, FileID,
+                ROW_NUMBER() OVER (PARTITION BY DocumentID ORDER BY CreatedDate DESC) as rn
+            FROM dbo.WF_Outgoing_Doc_Files
+        ) f ON f.DocumentID = doc.DocumentID AND f.rn = 1 
+        WHERE doc.DocumentID = ${id}
         `);
+
+        console.log(result.recordset);
 
         res.json({
             success: true,
