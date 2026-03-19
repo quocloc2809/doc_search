@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { logout } from '../common/auth/authService'
 import { useDepartments, useFileDownload, useIncomingDocuments } from '../common/hooks'
 import { APP_ROUTES } from '../common/routing/routes'
 import { CommonTable } from '../common/table'
@@ -149,7 +150,7 @@ export default function IncomingDocumentsPage() {
         <div className="row-between">
           <h2>Danh sách văn bản đến</h2>
           <div className="row-between" style={{ gap: '8px' }}>
-            <Button onClick={() => refetch()}>Tải lại</Button>
+            <Button onClick={() => { logout(); navigate(APP_ROUTES.LOGIN, { replace: true }) }}>Đăng xuất</Button>
             <Button onClick={() => navigate(APP_ROUTES.OUTGOING_DOCUMENTS)}>Văn bản đi</Button>
           </div>
         </div>
