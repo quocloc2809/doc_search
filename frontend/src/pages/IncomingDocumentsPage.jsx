@@ -86,7 +86,8 @@ export default function IncomingDocumentsPage() {
     return documents.filter((row) => {
       const createdDate = new Date(row?.CreatedDate)
       const rowYear = Number.isNaN(createdDate.getTime()) ? '' : String(createdDate.getFullYear())
-      const rowDepartmentId = String(row?.AssignedGroupID ?? '')
+      const rawGroupId = String(row?.AssignedGroupID ?? '')
+      const rowDepartmentId = rawGroupId !== '' ? rawGroupId : ''
 
       const matchesDepartment = filters.department === 'all'
         ? true
@@ -149,7 +150,7 @@ export default function IncomingDocumentsPage() {
           <h2>Danh sách văn bản đến</h2>
           <div className="row-between" style={{ gap: '8px' }}>
             <Button onClick={() => refetch()}>Tải lại</Button>
-            <Button onClick={() => navigate(APP_ROUTES.HOME)}>Về Dashboard</Button>
+            <Button onClick={() => navigate(APP_ROUTES.OUTGOING_DOCUMENTS)}>Văn bản đi</Button>
           </div>
         </div>
 
