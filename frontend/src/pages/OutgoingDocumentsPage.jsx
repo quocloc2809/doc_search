@@ -172,9 +172,7 @@ export default function OutgoingDocumentsPage() {
                     <h2 className='uppercase text-lg font-bold'>VĂN BẢN ĐI</h2>
                     <div className='row-between' style={{ gap: '8px' }}>
                         <Button onClick={() => refetch()}>Tải lại</Button>
-                        <Button onClick={() => navigate(APP_ROUTES.HOME)}>
-                            Về Dashboard
-                        </Button>
+                        <Button onClick={() => navigate(APP_ROUTES.INCOMING_DOCUMENTS)}>Văn bản đến</Button>
                     </div>
                 </div>
 

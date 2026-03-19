@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './common/routing/ProtectedRoute';
 import { APP_ROUTES } from './common/routing/routes';
-import DashboardPage from './pages/DashboardPage';
 import IncomingDocumentsPage from './pages/IncomingDocumentsPage';
 import OutgoingDocumentsPage from './pages/OutgoingDocumentsPage';
 import OutgoingDetailPage from './pages/OutgoingDetailPage';
@@ -14,7 +13,7 @@ function App() {
             <Route path={APP_ROUTES.LOGIN} element={<LoginPage />} />
 
             <Route element={<ProtectedRoute />}>
-                <Route path={APP_ROUTES.HOME} element={<DashboardPage />} />
+                <Route path={APP_ROUTES.HOME} element={<Navigate to={APP_ROUTES.INCOMING_DOCUMENTS} replace />} />
                 <Route
                     path={APP_ROUTES.INCOMING_DOCUMENTS}
                     element={<IncomingDocumentsPage />}

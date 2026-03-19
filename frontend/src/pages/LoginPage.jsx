@@ -21,7 +21,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (hasValidSession()) {
-      navigate(APP_ROUTES.HOME, { replace: true })
+      navigate(APP_ROUTES.INCOMING_DOCUMENTS, { replace: true })
     }
   }, [navigate])
 
@@ -50,7 +50,7 @@ export default function LoginPage() {
       }
 
       saveLoginSession(result.data)
-      navigate(APP_ROUTES.HOME, { replace: true })
+      navigate(APP_ROUTES.INCOMING_DOCUMENTS, { replace: true })
     } catch (apiError) {
       setError(apiError?.response?.data?.message || 'Không thể kết nối máy chủ')
     } finally {
