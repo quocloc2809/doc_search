@@ -38,7 +38,7 @@ router.get('/', async (req, res) => {
                 doc.ReviewNote,
                 COALESCE(grp.RecursiveGroupName, '') as GroupName
             FROM dbo.WF_Incoming_Docs doc
-            LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = doc.AssignedGroupID
+            LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = ABS(doc.AssignedGroupID) AND grp.IsView = 0 AND grp.IsShow = 1
             ORDER BY doc.CreatedDate DESC, doc.DocumentID DESC
         `)
 
@@ -98,12 +98,19 @@ router.get('/:id', async (req, res) => {
 
         const result = await pool.request()
             .input('id', sql.Int, id)
-            .query('SELECT * FROM dbo.WF_Incoming_Docs WHERE DocumentID = @id');
+            .query(`
+                SELECT
+                    doc.*,
+                    COALESCE(grp.RecursiveGroupName, '') AS GroupName
+                FROM dbo.WF_Incoming_Docs doc
+                LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = doc.AssignedGroupID
+                WHERE doc.DocumentID = @id
+            `);
 
         if (result.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy công văn'
+                message: 'Không tìm thấy công văn đến'
             });
         }
 
@@ -112,73 +119,7 @@ router.get('/:id', async (req, res) => {
             data: result.recordset[0]
         });
     } catch (error) {
-        console.error('Lỗi lấy thông tin công văn:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Lỗi server',
-            error: IS_PRODUCTION ? 'Internal server error' : error.message
-        });
-    }
-});
-
-router.put('/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { ReviewNote, OutgoingDocs } = req.body;
-
-        const pool = database.getPool();
-
-        const checkResult = await pool.request()
-            .input('checkId', sql.Int, id)
-            .query('SELECT DocumentID FROM dbo.WF_Incoming_Docs WHERE DocumentID = @checkId');
-
-        if (checkResult.recordset.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy công văn để cập nhật',
-                documentId: id
-            });
-        }
-
-        const result = await pool.request()
-            .input('id', sql.Int, id)
-            .input('reviewNote', sql.NVarChar(sql.MAX), ReviewNote || '')
-            .input('outgoingDocs', sql.NVarChar(50), OutgoingDocs || null)
-            .query(`
-                UPDATE dbo.WF_Incoming_Docs SET
-                    /* Status is 1 when there's an outgoing document OR a non-empty review note */
-                    Status = CASE WHEN ( (@outgoingDocs IS NOT NULL AND LTRIM(RTRIM(@outgoingDocs)) <> '') OR ( @reviewNote IS NOT NULL AND LTRIM(RTRIM(@reviewNote)) <> '' ) ) THEN 1 ELSE 0 END,
-                    ReviewNote = @reviewNote,
-                    OutgoingDocs = @outgoingDocs,
-                    UpdatedDate = GETDATE(),
-                    /* CompletedDate ONLY set when there's an outgoing document */
-                    CompletedDate = CASE WHEN (@outgoingDocs IS NOT NULL AND LTRIM(RTRIM(@outgoingDocs)) <> '') THEN COALESCE(CompletedDate, GETDATE()) ELSE NULL END
-                WHERE DocumentID = @id
-            `);
-
-        if (result.rowsAffected[0] === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy công văn để cập nhật'
-            });
-        }
-
-        // Return updated fields (including CompletedDate)
-        const updated = await pool.request()
-            .input('id', sql.Int, id)
-            .query('SELECT Status, ReviewNote, OutgoingDocs, CompletedDate FROM dbo.WF_Incoming_Docs WHERE DocumentID = @id');
-
-        res.json({
-            success: true,
-            message: 'Cập nhật công văn thành công',
-            data: updated.recordset[0] || {
-                Status: null,
-                ReviewNote: ReviewNote || '',
-                OutgoingDocs: OutgoingDocs || null
-            }
-        });
-    } catch (error) {
-        console.error('Lỗi cập nhật công văn:', error);
+        console.error('Lỗi lấy chi tiết công văn đến:', error);
         res.status(500).json({
             success: false,
             message: 'Lỗi server',

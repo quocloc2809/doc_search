@@ -86,7 +86,8 @@ export default function OutgoingDocumentsPage() {
     return documents.filter((row) => {
       const createdDate = new Date(row?.CreatedDate)
       const rowYear = Number.isNaN(createdDate.getTime()) ? '' : String(createdDate.getFullYear())
-      const rowDepartmentId = String(row?.IssuedGroupID ?? '')
+      const rawGroupId = row?.IssuedGroupID
+      const rowDepartmentId = rawGroupId != null ? String(Math.abs(rawGroupId)) : ''
 
       const matchesDepartment = filters.department === 'all'
         ? true
@@ -211,7 +212,10 @@ export default function OutgoingDocumentsPage() {
                   <select
                     id="filter-department"
                     value={draftFilters.department}
-                    onChange={(event) => setDraftFilters((prev) => ({ ...prev, department: event.target.value }))}
+                    onChange={(event) => {
+                      const selectedValue = event.target.value
+                      setDraftFilters((prev) => ({ ...prev, department: selectedValue }))
+                    }}
                   >
                     <option value="all">Tất cả đơn vị</option>
                     {departments.map((department) => (

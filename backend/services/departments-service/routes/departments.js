@@ -15,6 +15,8 @@ router.get('/', async (req, res) => {
             WHERE GroupID IS NOT NULL
                 AND RecursiveGroupName IS NOT NULL
                 AND LTRIM(RTRIM(RecursiveGroupName)) <> ''
+                AND IsView = 0
+                AND IsShow = 1
             ORDER BY RecursiveGroupName
         `);
 
