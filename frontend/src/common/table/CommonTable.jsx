@@ -1,9 +1,7 @@
 import { isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import { Pagination, SearchBar, Tooltip } from '../ui';
 import { calculateTableLayout } from './calculateTableLayout';
-import { normalizeText } from '@/common/utils/text-helper';
-import { useNavigate } from 'react-router-dom';
-import { APP_ROUTES } from '@/common/routing/routes';
+import { normalizeText } from '@/common/utils';
 
 function defaultGetCellValue(row, column) {
     if (!column?.key) {
@@ -43,7 +41,6 @@ export default function CommonTable({
     const [containerWidth, setContainerWidth] = useState(0);
     const tableWrapperRef = useRef(null);
     const tableScrollRef = useRef(null);
-    const navigate = useNavigate();
 
     const safeColumns = useMemo(
         () => (Array.isArray(columns) ? columns : []),
@@ -244,10 +241,6 @@ export default function CommonTable({
         return null;
     }
 
-    const handleDetail = id => {
-        navigate(APP_ROUTES.OUTGOING_DOCUMENT_DETAIL.replace(':id', id));
-    };
-
     const renderedTableWidth = layout.tableWidth;
     const tableScrollStyle =
         autoPageSize || !tableMaxHeight
@@ -294,12 +287,7 @@ export default function CommonTable({
                             </tr>
                         ) : (
                             pagedRows.map((row, rowIndex) => (
-                                <tr
-                                    key={row?.[rowKey] ?? `row-${rowIndex}`}
-                                    className='cursor-pointer'
-                                    onClick={() =>
-                                        handleDetail(row.DocumentID)
-                                    }>
+                                <tr key={row?.[rowKey] ?? `row-${rowIndex}`}>
                                     {safeColumns.map((column, columnIndex) => {
                                         const rawValue = column.render
                                             ? column.render(row, rowIndex)

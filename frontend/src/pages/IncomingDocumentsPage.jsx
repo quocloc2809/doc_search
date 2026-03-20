@@ -1,253 +1,339 @@
-import { useCallback, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { logout } from '../common/auth/authService'
-import { useDepartments, useFileDownload, useIncomingDocuments } from '../common/hooks'
-import { APP_ROUTES } from '../common/routing/routes'
-import { CommonTable } from '../common/table'
-import { Button, ErrorMessage, LoadingSpinner, SearchBar } from '../common/ui'
-import { formatDateTime } from '../common/utils'
-import './IncomingDocumentsPage.css'
+import { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+    useDepartments,
+    useFileDownload,
+    useIncomingDocuments,
+} from '../common/hooks';
+import { CommonTable } from '../common/table';
+import { ErrorMessage, LoadingSpinner, SearchBar } from '../common/ui';
+import { formatDateTime, normalizeText } from '../common/utils';
+import './IncomingDocumentsPage.css';
+import { Eye, Download, Funnel } from 'lucide-react';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 
 const SEARCH_FIELDS = [
-  { value: 'all', label: 'Tất cả' },
-  { value: 'DocumentNo', label: 'Số hiệu' },
-  { value: 'DocumentSummary', label: 'Trích yếu' },
-]
-
-function normalizeText(value) {
-  if (value === null || value === undefined) {
-    return ''
-  }
-
-  return String(value).trim()
-}
+    { value: 'all', label: 'Tất cả' },
+    { value: 'DocumentNo', label: 'Số hiệu' },
+    { value: 'DocumentSummary', label: 'Trích yếu' },
+];
 
 export default function IncomingDocumentsPage() {
-  const navigate = useNavigate()
-  const { documents, isLoading, error, refetch } = useIncomingDocuments({ view: 'MAIN_VIEW' })
-  const {
-    departments,
-    error: departmentsError,
-    refetch: refetchDepartments,
-  } = useDepartments()
-  const {
-    isDownloading,
-    error: downloadError,
-    downloadIncomingFile,
-  } = useFileDownload()
-  const [searchKeyword, setSearchKeyword] = useState('')
-  const [searchField, setSearchField] = useState('all')
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [filters, setFilters] = useState({
-    department: 'all',
-    year: 'all',
-  })
-  const [draftFilters, setDraftFilters] = useState(filters)
+    const navigate = useNavigate();
+    const { documents, isLoading, error, refetch } = useIncomingDocuments({
+        view: 'MAIN_VIEW',
+    });
+    const {
+        departments,
+        error: departmentsError,
+        refetch: refetchDepartments,
+    } = useDepartments();
+    const {
+        isDownloading,
+        error: downloadError,
+        downloadIncomingFile,
+    } = useFileDownload();
+    const [searchKeyword, setSearchKeyword] = useState('');
+    const [searchField, setSearchField] = useState('all');
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [filters, setFilters] = useState({
+        department: 'all',
+        year: 'all',
+    });
+    const [draftFilters, setDraftFilters] = useState(filters);
 
-  const handleDownload = useCallback(async (documentId) => {
-    try {
-      await downloadIncomingFile(documentId)
-    } catch {
-      return null
-    }
-  }, [downloadIncomingFile])
+    const handleDownload = useCallback(
+        async documentId => {
+            try {
+                await downloadIncomingFile(documentId);
+            } catch {
+                return null;
+            }
+        },
+        [downloadIncomingFile],
+    );
 
-  const handleOpenFilters = () => {
-    setDraftFilters(filters)
-    setIsFilterOpen(true)
-    refetchDepartments()
-  }
+    const handleOpenFilters = () => {
+        setDraftFilters(filters);
+        setIsFilterOpen(true);
+        refetchDepartments();
+    };
 
-  const handleCloseFilters = () => {
-    setIsFilterOpen(false)
-    setDraftFilters(filters)
-  }
+    const handleCloseFilters = () => {
+        setIsFilterOpen(false);
+        setDraftFilters(filters);
+    };
 
-  const handleApplyFilters = () => {
-    setFilters(draftFilters)
-    setIsFilterOpen(false)
-  }
+    const handleApplyFilters = () => {
+        setFilters(draftFilters);
+        setIsFilterOpen(false);
+    };
 
-  const yearOptions = useMemo(() => {
-    const yearSet = new Set()
+    const handleIncomingDetail = id => navigate(`/incoming-documents/${id}`);
 
-    documents.forEach((row) => {
-      const date = new Date(row?.CreatedDate)
-      if (!Number.isNaN(date.getTime())) {
-        yearSet.add(String(date.getFullYear()))
-      }
-    })
+    const yearOptions = useMemo(() => {
+        const yearSet = new Set();
 
-    return [...yearSet].sort((a, b) => Number(b) - Number(a))
-  }, [documents])
+        documents.forEach(row => {
+            const date = new Date(row?.CreatedDate);
+            if (!Number.isNaN(date.getTime())) {
+                yearSet.add(String(date.getFullYear()));
+            }
+        });
 
-  const filteredDocuments = useMemo(() => {
-    const keyword = normalizeText(searchKeyword).toLowerCase()
+        return [...yearSet].sort((a, b) => Number(b) - Number(a));
+    }, [documents]);
 
-    return documents.filter((row) => {
-      const createdDate = new Date(row?.CreatedDate)
-      const rowYear = Number.isNaN(createdDate.getTime()) ? '' : String(createdDate.getFullYear())
-      const rawGroupId = String(row?.AssignedGroupID ?? '')
-      const rowDepartmentId = rawGroupId !== '' ? rawGroupId : ''
+    const filteredDocuments = useMemo(() => {
+        const keyword = normalizeText(searchKeyword).toLowerCase();
 
-      const matchesDepartment = filters.department === 'all'
-        ? true
-        : rowDepartmentId === filters.department
+        return documents.filter(row => {
+            const createdDate = new Date(row?.CreatedDate);
+            const rowYear = Number.isNaN(createdDate.getTime())
+                ? ''
+                : String(createdDate.getFullYear());
+            const rowDepartmentId = String(row?.AssignedGroupID ?? '');
 
-      const matchesYear = filters.year === 'all'
-        ? true
-        : rowYear === filters.year
+            const matchesDepartment =
+                filters.department === 'all'
+                    ? true
+                    : rowDepartmentId === filters.department;
 
-      const searchableValues = searchField === 'DocumentNo'
-        ? [row?.DocumentNo]
-        : searchField === 'DocumentSummary'
-          ? [row?.DocumentSummary]
-          : [row?.DocumentNo, row?.DocumentSummary, row?.AssignedReviewedFullname, row?.GroupName]
+            const matchesYear =
+                filters.year === 'all' ? true : rowYear === filters.year;
 
-      const matchesKeyword = keyword
-        ? searchableValues.some((value) => normalizeText(value).toLowerCase().includes(keyword))
-        : true
+            const searchableValues =
+                searchField === 'DocumentNo'
+                    ? [row?.DocumentNo]
+                    : searchField === 'DocumentSummary'
+                      ? [row?.DocumentSummary]
+                      : [
+                            row?.DocumentNo,
+                            row?.DocumentSummary,
+                            row?.AssignedReviewedFullname,
+                            row?.GroupName,
+                        ];
 
-      return matchesDepartment && matchesYear && matchesKeyword
-    })
-  }, [documents, filters.department, filters.year, searchKeyword, searchField])
+            const matchesKeyword = keyword
+                ? searchableValues.some(value =>
+                      normalizeText(value).toLowerCase().includes(keyword),
+                  )
+                : true;
 
-  const columns = useMemo(() => ([
-    { key: 'DocumentNo', title: 'Số hiệu' },
-    { key: 'DocumentSummary', title: 'Trích yếu' },
-    {
-      key: 'CreatedDate',
-      title: 'Ngày tạo',
-      render: (row) => formatDateTime(row.CreatedDate),
-    },
-    { key: 'AssignedReviewedFullname', title: 'Lãnh đạo bút phê' },
-    { key: 'GroupName', title: 'Đơn vị xử lý chính' },
-    {
-      key: 'ExpiredDate',
-      title: 'Ngày hết hạn',
-      render: (row) => formatDateTime(row.ExpiredDate),
-    },
-    {
-      key: 'actions',
-      title: 'Thao tác',
-      tooltip: false,
-      getSearchValue: () => '',
-      render: (row) => (
-        <Button
-          type="button"
-          disabled={isDownloading}
-          onClick={() => handleDownload(row.DocumentID)}
-        >
-          Tải về
-        </Button>
-      ),
-    },
-  ]), [handleDownload, isDownloading])
+            return matchesDepartment && matchesYear && matchesKeyword;
+        });
+    }, [
+        documents,
+        filters.department,
+        filters.year,
+        searchKeyword,
+        searchField,
+    ]);
 
-  return (
-    <div className="page-wrapper page-wrapper-top">
-      <div className="panel panel-wide panel-full-height">
-        <div className="row-between">
-          <h2>Danh sách văn bản đến</h2>
-          <div className="row-between" style={{ gap: '8px' }}>
-            <Button onClick={() => { logout(); navigate(APP_ROUTES.LOGIN, { replace: true }) }}>Đăng xuất</Button>
-            <Button onClick={() => navigate(APP_ROUTES.OUTGOING_DOCUMENTS)}>Văn bản đi</Button>
-          </div>
-        </div>
+    const columns = [
+        {
+            key: 'DocumentNo',
+            title: 'Số hiệu',
+            render: row => (
+                <p
+                    className='font-semibold hover:cursor-pointer hover:underline'
+                    onClick={() => handleIncomingDetail(row.DocumentID)}>
+                    {row.DocumentNo}
+                </p>
+            ),
+        },
+        { key: 'DocumentSummary', title: 'Trích yếu' },
+        {
+            key: 'CreatedDate',
+            title: 'Ngày tạo',
+            render: row => formatDateTime(row.CreatedDate),
+        },
+        { key: 'AssignedReviewedFullname', title: 'Lãnh đạo bút phê' },
+        { key: 'GroupName', title: 'Đơn vị xử lý chính' },
+        {
+            key: 'ExpiredDate',
+            title: 'Ngày hết hạn',
+            render: row => formatDateTime(row.ExpiredDate),
+        },
+        {
+            key: 'actions',
+            title: 'Thao tác',
+            tooltip: false,
+            getSearchValue: () => '',
+            render: row => (
+                <div className='flex gap-1'>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                type='button'
+                                onClick={() => handleDownload(row.DocumentID)}>
+                                <Eye size={12} />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side='bottom'>
+                            <p>Xem văn bản</p>
+                        </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                type='button'
+                                disabled={isDownloading}
+                                onClick={() => handleDownload(row.DocumentID)}>
+                                <Download size={12} />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side='bottom'>
+                            <p>Tải xuống</p>
+                        </TooltipContent>
+                    </Tooltip>
+                </div>
+            ),
+        },
+    ];
 
-        {isLoading ? <LoadingSpinner text="Đang tải văn bản đến..." /> : null}
-        <ErrorMessage message={error || departmentsError || downloadError} />
-
-        <div className="incoming-toolbar">
-          <div className="incoming-toolbar-left">
-            <SearchBar
-              searchFields={SEARCH_FIELDS}
-              searchField={searchField}
-              onSearchFieldChange={setSearchField}
-              onSearch={(keyword) => setSearchKeyword(keyword)}
-              placeholder="Tìm kiếm văn bản..."
-              style={{ marginBottom: 0 }}
+    return (
+        <>
+            {isLoading ? (
+                <LoadingSpinner text='Đang tải văn bản đến...' />
+            ) : null}
+            <ErrorMessage
+                message={error || departmentsError || downloadError}
             />
-            <Button className="button-filter" onClick={handleOpenFilters}>Bộ lọc</Button>
-          </div>
 
-          <div className="filter-pill">
-            Đơn vị: <strong>{filters.department === 'all'
-              ? 'Tất cả'
-              : (departments.find((item) => String(item.GroupID) === filters.department)?.GroupName || 'Không xác định')}</strong>
-            {' | '}
-            Năm: <strong>{filters.year === 'all' ? 'Tất cả' : filters.year}</strong>
-          </div>
-        </div>
+            <div className='incoming-toolbar'>
+                <div className='incoming-toolbar-left'>
+                    <SearchBar
+                        searchFields={SEARCH_FIELDS}
+                        searchField={searchField}
+                        onSearchFieldChange={setSearchField}
+                        onSearch={keyword => setSearchKeyword(keyword)}
+                        placeholder='Tìm kiếm văn bản...'
+                        style={{ marginBottom: 0 }}
+                    />
+                    <Button onClick={handleOpenFilters}>
+                        <Funnel size={12} />
+                    </Button>
+                </div>
 
-        <CommonTable
-          columns={columns}
-          data={filteredDocuments}
-          tableWidth={0}
-          responsive
-          longColumns={{
-            1: 420,
-            4: 260,
-            6: 130,
-          }}
-          minAutoColumnWidth={88}
-          rowKey="DocumentID"
-          searchable={false}
-          pagination
-          autoPageSize={false}
-          initialPageSize={15}
-          pageSizeOptions={[15]}
-          emptyText="Không có văn bản đến"
-        />
-
-        {isFilterOpen ? (
-          <div className="filter-overlay" onClick={handleCloseFilters}>
-            <div className="filter-modal" onClick={(event) => event.stopPropagation()}>
-              <div className="filter-header">
-                <h3>Bộ lọc dữ liệu</h3>
-                <button type="button" className="filter-close" onClick={handleCloseFilters}>×</button>
-              </div>
-
-              <div className="filter-grid">
-                <label htmlFor="filter-department">
-                  Đơn vị
-                  <select
-                    id="filter-department"
-                    value={draftFilters.department}
-                    onChange={(event) => setDraftFilters((prev) => ({ ...prev, department: event.target.value }))}
-                  >
-                    <option value="all">Tất cả đơn vị</option>
-                    {departments.map((department) => (
-                      <option key={department.GroupID} value={String(department.GroupID)}>
-                        {department.GroupName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label htmlFor="filter-year">
-                  Năm
-                  <select
-                    id="filter-year"
-                    value={draftFilters.year}
-                    onChange={(event) => setDraftFilters((prev) => ({ ...prev, year: event.target.value }))}
-                  >
-                    <option value="all">Tất cả năm</option>
-                    {yearOptions.map((year) => (
-                      <option key={year} value={year}>{year}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="filter-actions">
-                <Button className="button-muted" onClick={handleCloseFilters}>Hủy</Button>
-                <Button className="button-filter" onClick={handleApplyFilters}>Áp dụng</Button>
-              </div>
+                <div className='filter-pill'>
+                    Đơn vị:{' '}
+                    <strong>
+                        {filters.department === 'all'
+                            ? 'Tất cả'
+                            : departments.find(
+                                  item =>
+                                      String(item.GroupID) ===
+                                      filters.department,
+                              )?.GroupName || 'Không xác định'}
+                    </strong>
+                    {' | '}
+                    Năm:{' '}
+                    <strong>
+                        {filters.year === 'all' ? 'Tất cả' : filters.year}
+                    </strong>
+                </div>
             </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  )
+
+            <CommonTable
+                columns={columns}
+                data={filteredDocuments}
+                tableWidth={0}
+                responsive
+                longColumns={{
+                    1: 420,
+                    4: 260,
+                    6: 130,
+                }}
+                minAutoColumnWidth={88}
+                rowKey='DocumentID'
+                searchable={false}
+                pagination
+                autoPageSize={false}
+                initialPageSize={15}
+                pageSizeOptions={[15]}
+                emptyText='Không có văn bản đến'
+            />
+
+            {isFilterOpen ? (
+                <div className='filter-overlay' onClick={handleCloseFilters}>
+                    <div
+                        className='filter-modal'
+                        onClick={event => event.stopPropagation()}>
+                        <div className='filter-header'>
+                            <h3>Bộ lọc dữ liệu</h3>
+                            <button
+                                type='button'
+                                className='filter-close'
+                                onClick={handleCloseFilters}>
+                                ×
+                            </button>
+                        </div>
+
+                        <div className='filter-grid'>
+                            <label htmlFor='filter-department'>
+                                Đơn vị
+                                <select
+                                    id='filter-department'
+                                    value={draftFilters.department}
+                                    onChange={event =>
+                                        setDraftFilters(prev => ({
+                                            ...prev,
+                                            department: event.target.value,
+                                        }))
+                                    }>
+                                    <option value='all'>Tất cả đơn vị</option>
+                                    {departments.map(department => (
+                                        <option
+                                            key={department.GroupID}
+                                            value={String(department.GroupID)}>
+                                            {department.GroupName}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            <label htmlFor='filter-year'>
+                                Năm
+                                <select
+                                    id='filter-year'
+                                    value={draftFilters.year}
+                                    onChange={event =>
+                                        setDraftFilters(prev => ({
+                                            ...prev,
+                                            year: event.target.value,
+                                        }))
+                                    }>
+                                    <option value='all'>Tất cả năm</option>
+                                    {yearOptions.map(year => (
+                                        <option key={year} value={year}>
+                                            {year}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        </div>
+
+                        <div className='filter-actions'>
+                            <Button
+                                className='button-muted'
+                                onClick={handleCloseFilters}>
+                                Hủy
+                            </Button>
+                            <Button
+                                className='button-filter'
+                                onClick={handleApplyFilters}>
+                                Áp dụng
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+        </>
+    );
 }
