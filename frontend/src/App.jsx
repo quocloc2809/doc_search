@@ -5,6 +5,7 @@ import IncomingDocumentsPage from './pages/IncomingDocumentsPage';
 import OutgoingDocumentsPage from './pages/OutgoingDocumentsPage';
 import IncomingDetailPage from '@/pages/IncomingDetailPage';
 import OutgoingDetailPage from './pages/OutgoingDetailPage';
+import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import DocumentLayout from '@/common/layout/DocumentLayout';
@@ -37,6 +38,10 @@ function App() {
                 <Route
                     path={APP_ROUTES.OUTGOING_DOCUMENT_DETAIL}
                     element={<OutgoingDetailPage />}
+                />
+                <Route
+                    path={APP_ROUTES.ADMIN}
+                    element={<AdminPage />}
                 />
             </Route>
             <Route path='*' element={<NotFoundPage />} />

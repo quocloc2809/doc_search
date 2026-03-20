@@ -77,6 +77,10 @@ function verifyAccessToken(req, res, next) {
 
     try {
         req.user = jwt.verify(token, JWT_SECRET);
+        // Forward user info as headers to downstream microservices
+        req.headers['x-user-id'] = String(req.user.userId || '');
+        req.headers['x-user-role'] = String(req.user.role || '');
+        req.headers['x-user-group-id'] = req.user.groupId != null ? String(req.user.groupId) : '';
         return next();
     } catch (error) {
         return res.status(401).json({

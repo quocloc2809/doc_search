@@ -25,7 +25,7 @@ const SEARCH_FIELDS = [
 
 export default function IncomingDocumentsPage() {
     const navigate = useNavigate();
-    const { documents, isLoading, error, refetch } = useIncomingDocuments({
+    const { documents, isLoading, error } = useIncomingDocuments({
         view: 'MAIN_VIEW',
     });
     const {

@@ -54,4 +54,6 @@ class Database {
     }
 }
 
-module.exports = new Database();
+const instance = new Database();
+instance.sql = sql;
+module.exports = instance;

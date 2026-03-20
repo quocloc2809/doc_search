@@ -5,4 +5,5 @@ export const APP_ROUTES = {
     OUTGOING_DOCUMENTS: '/outgoing-documents',
     INCOMING_DOCUMENT_DETAIL: '/incoming-documents/:id',
     OUTGOING_DOCUMENT_DETAIL: '/outgoing-documents/:id',
+    ADMIN: '/admin',
 };

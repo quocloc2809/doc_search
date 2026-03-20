@@ -1,7 +1,7 @@
 import { clearAuthSession, getCurrentUser, isAuthenticated, setAuthSession } from './storage'
 
 export function saveLoginSession(loginResponseData) {
-  const { accessToken, userId, username, fullName, email, role } = loginResponseData
+  const { accessToken, userId, username, fullName, email, role, groupId } = loginResponseData
 
   setAuthSession({
     accessToken,
@@ -11,6 +11,7 @@ export function saveLoginSession(loginResponseData) {
       fullName,
       email,
       role,
+      groupId: groupId ?? null,
     },
   })
 }

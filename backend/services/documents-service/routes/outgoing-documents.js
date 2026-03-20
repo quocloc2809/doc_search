@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const sql = require('mssql');
 const database = require('../../../shared/config/database');
+const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 // Get all outgoing documents (similar structure to incoming documents)
@@ -9,7 +9,20 @@ router.get('/', async (req, res) => {
     try {
         const pool = database.getPool();
 
-        const result = await pool.request().query(`
+        const userRole = req.headers['x-user-role'] || '';
+        const userGroupId = req.headers['x-user-group-id'] || '';
+        const groupIdNum = parseInt(userGroupId, 10);
+        const isAdmin = userRole === 'admin';
+        const hasGroupFilter = !isAdmin && Number.isFinite(groupIdNum) && groupIdNum > 0;
+
+        const request = pool.request();
+        let whereClause = '';
+        if (hasGroupFilter) {
+            request.input('groupId', sql.Int, groupIdNum);
+            whereClause = 'WHERE ABS(doc.IssuedGroupID) = @groupId';
+        }
+
+        const result = await request.query(`
             SELECT
                 doc.DocumentID,
                 doc.DocumentNo,
@@ -22,6 +35,7 @@ router.get('/', async (req, res) => {
             FROM dbo.WF_Outgoing_Docs doc
             LEFT JOIN dbo.Core_Users u ON u.UserID = doc.SignedUserID
             LEFT JOIN dbo.Core_Groups g ON g.GroupID = ABS(doc.IssuedGroupID) AND g.IsView = 0 AND g.IsShow = 1
+            ${whereClause}
             ORDER BY doc.CreatedDate DESC, doc.DocumentID DESC
         `);
 

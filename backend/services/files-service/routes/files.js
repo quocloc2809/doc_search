@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const sql = require('mssql');
 const database = require('../../../shared/config/database');
+const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 // Download file cho Incoming Documents

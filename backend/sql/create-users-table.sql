@@ -89,6 +89,19 @@ END
 GO
 
 -- =====================================================================
+-- THÊM CỘT GroupID (chạy 1 lần nếu bảng đã tồn tại)
+-- =====================================================================
+IF NOT EXISTS (
+    SELECT * FROM sys.columns
+    WHERE object_id = OBJECT_ID(N'[dbo].[Users]') AND name = 'GroupID'
+)
+BEGIN
+    ALTER TABLE [dbo].[Users] ADD [GroupID] INT NULL;
+    PRINT 'Đã thêm cột GroupID vào bảng Users.';
+END
+GO
+
+-- =====================================================================
 -- KIỂM TRA DỮ LIỆU
 -- =====================================================================
 SELECT 
@@ -97,6 +110,7 @@ SELECT
     FullName,
     Email,
     Role,
+    GroupID,
     IsActive,
     CreatedDate,
     LastLoginDate

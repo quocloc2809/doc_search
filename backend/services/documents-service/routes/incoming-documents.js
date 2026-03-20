@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const sql = require('mssql');
 const database = require('../../../shared/config/database');
+const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const COLUMN_SETS = {
@@ -31,7 +31,20 @@ router.get('/', async (req, res) => {
 
         const columnStr = Array.isArray(columns) ? columns.join(', ') : columns;
 
-        const result = await pool.request().query(`
+        const userRole = req.headers['x-user-role'] || '';
+        const userGroupId = req.headers['x-user-group-id'] || '';
+        const groupIdNum = parseInt(userGroupId, 10);
+        const isAdmin = userRole === 'admin';
+        const hasGroupFilter = !isAdmin && Number.isFinite(groupIdNum) && groupIdNum > 0;
+
+        const request = pool.request();
+        let whereClause = '';
+        if (hasGroupFilter) {
+            request.input('groupId', sql.Int, groupIdNum);
+            whereClause = 'WHERE ABS(doc.AssignedGroupID) = @groupId';
+        }
+
+        const result = await request.query(`
             SELECT
                 doc.DocumentID,
                 doc.DocumentNo,
@@ -47,6 +60,7 @@ router.get('/', async (req, res) => {
                 COALESCE(grp.RecursiveGroupName, '') as GroupName
             FROM dbo.WF_Incoming_Docs doc
             LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = ABS(doc.AssignedGroupID) AND grp.IsView = 0 AND grp.IsShow = 1
+            ${whereClause}
             ORDER BY doc.CreatedDate DESC, doc.DocumentID DESC
         `);
 
