@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDepartments, useToast, useUsers } from '../common/hooks'
+import { logout } from '../common/auth/authService'
 import { Button, ErrorMessage, LoadingSpinner, Toast } from '../common/ui'
 import { formatDateTime } from '../common/utils'
 import './AdminPage.css'
@@ -7,6 +9,7 @@ import './AdminPage.css'
 const EMPTY_FORM = { username: '', password: '', fullName: '', email: '', role: 'user', groupId: '', isActive: true }
 
 export default function AdminPage() {
+    const navigate = useNavigate()
     const { users, isLoading, error, createUser, updateUser, deleteUser } = useUsers()
     const { departments } = useDepartments()
     const toast = useToast()
@@ -133,13 +136,21 @@ export default function AdminPage() {
         }
     }
 
+    const handleLogout = () => {
+        logout()
+        navigate('/login')
+    }
+
     return (
         <div className='page-wrapper page-wrapper-top'>
             <div className='panel-wide panel panel-full-height'>
                 <div className='admin-page'>
                     <div className='admin-page-header'>
                         <h1 className='admin-page-title'>Quản lý tài khoản</h1>
-                        <Button onClick={openAdd}>+ Thêm tài khoản</Button>
+                        <div className='admin-page-header-actions'>
+                            <Button onClick={openAdd}>+ Thêm tài khoản</Button>
+                            <Button className='common-button-ghost' onClick={handleLogout}>Đăng xuất</Button>
+                        </div>
                     </div>
 
                     {error && <ErrorMessage message={error} />}
