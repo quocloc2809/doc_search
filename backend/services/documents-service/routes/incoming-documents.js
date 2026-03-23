@@ -4,32 +4,9 @@ const database = require('../../../shared/config/database');
 const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
-const COLUMN_SETS = {
-    MAIN_VIEW: [
-        'DocumentID',
-        'DocumentNo',
-        'CreatedDate',
-        'DocumentSummary',
-        'UpdatedDate',
-        'ExpiredDate',
-        'AssignedReviewedFullname',
-        'Status',
-        'AssignedGroupID',
-        'AssignedUserID',
-        'ReviewNote',
-    ],
-
-    DETAIL: '*',
-};
-
 router.get('/', async (req, res) => {
     try {
         const pool = database.getPool();
-
-        const view = req.query.view || 'MAIN_VIEW';
-        const columns = COLUMN_SETS[view] || COLUMN_SETS.MAIN_VIEW;
-
-        const columnStr = Array.isArray(columns) ? columns.join(', ') : columns;
 
         const userRole = req.headers['x-user-role'] || '';
         const userGroupId = req.headers['x-user-group-id'] || '';
@@ -52,35 +29,28 @@ router.get('/', async (req, res) => {
                 doc.DocumentSummary,
                 doc.UpdatedDate,
                 doc.ExpiredDate,
-                doc.AssignedReviewedFullname,
                 doc.Status,
                 doc.AssignedGroupID,
+                doc.AssignedReviewedUserID,
                 doc.CompletedDate,
                 doc.ReviewNote,
-                COALESCE(grp.RecursiveGroupName, '') as GroupName
+                COALESCE(grp.RecursiveGroupName, '') as GroupName,
+                NULLIF(LTRIM(RTRIM(COALESCE(usr.Lastname, '') + ' ' + COALESCE(usr.FirstName, ''))), '') as LeaderName
             FROM dbo.WF_Incoming_Docs doc
             LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = ABS(doc.AssignedGroupID) AND grp.IsView = 0 AND grp.IsShow = 1
+            LEFT JOIN dbo.Core_Users usr ON usr.UserID = doc.AssignedReviewedUserID
             ${whereClause}
             ORDER BY doc.CreatedDate DESC, doc.DocumentID DESC
         `);
 
         const rows = result.recordset || [];
 
-        // Leader (lãnh đạo bút phê) logic: use AssignedReviewedFullname
-        // If AssignedReviewedFullname is null/empty => chưa bút phê, otherwise đã bút phê.
-        const leaderField = 'AssignedReviewedFullname';
-        const leaderDone = rows.reduce((acc, r) => {
-            const val =
-                r[leaderField] ??
-                r[leaderField.toLowerCase()] ??
-                r[leaderField.toUpperCase()];
-            return (
-                acc +
-                (val !== null && val !== undefined && String(val).trim() !== ''
-                    ? 1
-                    : 0)
-            );
-        }, 0);
+        // Leader (lãnh đạo bút phê) logic: use LeaderName joined from Core_Users
+        // If LeaderName is null/empty => chưa bút phê, otherwise đã bút phê.
+        const leaderDone = rows.reduce(
+            (acc, r) => (r.LeaderName ? acc + 1 : acc),
+            0,
+        );
         const leaderUndone = Math.max(0, rows.length - leaderDone);
 
         // Office logic: use CompletedDate instead of Status
@@ -96,7 +66,7 @@ router.get('/', async (req, res) => {
 
         const statsObj = {
             leader: {
-                column: leaderField,
+                column: 'LeaderName',
                 done: leaderDone,
                 undone: leaderUndone,
                 total: rows.length,
@@ -114,8 +84,6 @@ router.get('/', async (req, res) => {
             success: true,
             data: rows,
             stats: statsObj,
-            view: view,
-            columns_used: Array.isArray(columns) ? columns : 'all',
         });
     } catch (error) {
         console.error('Lỗi lấy danh sách công văn:', error);
@@ -137,7 +105,7 @@ router.get('/:id', async (req, res) => {
                     doc.*,
                     COALESCE(grp.RecursiveGroupName, '') AS GroupName
                 FROM dbo.WF_Incoming_Docs doc
-                LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = doc.AssignedGroupID
+                LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = ABS(doc.AssignedGroupID) AND grp.IsView = 0 AND grp.IsShow = 1
                 WHERE doc.DocumentID = @id
             `);
 

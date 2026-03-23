@@ -29,9 +29,10 @@ router.get('/', async (req, res) => {
                 doc.CreatedDate,
                 doc.DocumentSummary,
                 doc.SignedDate,
-                doc.SignerPosition,
+                doc.SignerPosition,                
+                doc.IssuedGroupID,                
                 COALESCE(u.Fullname, '') as SignerFullname,
-                COALESCE(g.GroupName, '') as GroupName
+                COALESCE(g.RecursiveGroupName, '') as GroupName
             FROM dbo.WF_Outgoing_Docs doc
             LEFT JOIN dbo.Core_Users u ON u.UserID = doc.SignedUserID
             LEFT JOIN dbo.Core_Groups g ON g.GroupID = ABS(doc.IssuedGroupID) AND g.IsView = 0 AND g.IsShow = 1
@@ -66,7 +67,7 @@ router.get('/:id', async (req, res) => {
             doc.SignedDate,
             doc.SignerPosition,
             COALESCE(u.Fullname, '') as SignerFullname,
-            COALESCE(g.GroupName, '') as GroupName,
+            COALESCE(g.RecursiveGroupName, '') as GroupName,
             COALESCE(b.Name, '') as BookName,
             COALESCE(d.Name, '') as TypeName,
             COALESCE(f.FileName, '') as FileName

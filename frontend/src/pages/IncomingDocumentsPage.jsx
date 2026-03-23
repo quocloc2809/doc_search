@@ -25,9 +25,7 @@ const SEARCH_FIELDS = [
 
 export default function IncomingDocumentsPage() {
     const navigate = useNavigate();
-    const { documents, isLoading, error } = useIncomingDocuments({
-        view: 'MAIN_VIEW',
-    });
+    const { documents, isLoading, error } = useIncomingDocuments();
     const {
         departments,
         error: departmentsError,
@@ -97,7 +95,7 @@ export default function IncomingDocumentsPage() {
             const rowYear = Number.isNaN(createdDate.getTime())
                 ? ''
                 : String(createdDate.getFullYear());
-            const rowDepartmentId = String(row?.AssignedGroupID ?? '');
+            const rowDepartmentId = String(Math.abs(row?.AssignedGroupID ?? 0));
 
             const matchesDepartment =
                 filters.department === 'all'
@@ -115,7 +113,7 @@ export default function IncomingDocumentsPage() {
                       : [
                             row?.DocumentNo,
                             row?.DocumentSummary,
-                            row?.AssignedReviewedFullname,
+                            row?.LeaderName,
                             row?.GroupName,
                         ];
 
@@ -153,7 +151,7 @@ export default function IncomingDocumentsPage() {
             title: 'Ngày tạo',
             render: row => formatDateTime(row.CreatedDate),
         },
-        { key: 'AssignedReviewedFullname', title: 'Lãnh đạo bút phê' },
+        { key: 'LeaderName', title: 'Lãnh đạo bút phê' },
         { key: 'GroupName', title: 'Đơn vị xử lý chính' },
         {
             key: 'ExpiredDate',
