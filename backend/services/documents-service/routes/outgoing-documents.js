@@ -13,13 +13,13 @@ router.get('/', async (req, res) => {
         const userGroupId = req.headers['x-user-group-id'] || '';
         const groupIdNum = parseInt(userGroupId, 10);
         const isAdmin = userRole === 'admin';
-        const hasGroupFilter = !isAdmin && Number.isFinite(groupIdNum) && groupIdNum > 0;
+        const hasGroupFilter = !isAdmin && Number.isFinite(groupIdNum) && groupIdNum !== 0;
 
         const request = pool.request();
         let whereClause = '';
         if (hasGroupFilter) {
             request.input('groupId', sql.Int, groupIdNum);
-            whereClause = 'WHERE ABS(doc.IssuedGroupID) = @groupId';
+            whereClause = 'WHERE doc.IssuedGroupID = @groupId';
         }
 
         const result = await request.query(`
@@ -32,10 +32,15 @@ router.get('/', async (req, res) => {
                 doc.SignerPosition,                
                 doc.IssuedGroupID,                
                 COALESCE(u.Fullname, '') as SignerFullname,
-                COALESCE(g.RecursiveGroupName, '') as GroupName
+                CASE
+                    WHEN doc.IssuedGroupID > 0 THEN COALESCE(g.RecursiveGroupName, '')
+                    WHEN doc.IssuedGroupID < 0 THEN COALESCE(portal.PortalName, '')
+                    ELSE ''
+                END AS GroupName
             FROM dbo.WF_Outgoing_Docs doc
             LEFT JOIN dbo.Core_Users u ON u.UserID = doc.SignedUserID
-            LEFT JOIN dbo.Core_Groups g ON g.GroupID = ABS(doc.IssuedGroupID) AND g.IsView = 0 AND g.IsShow = 1
+            LEFT JOIN dbo.Core_Groups g ON doc.IssuedGroupID > 0 AND g.GroupID = doc.IssuedGroupID AND g.IsView = 0 AND g.IsShow = 1
+            LEFT JOIN dbo.Core_Portals portal ON doc.IssuedGroupID < 0 AND portal.PortalId = ABS(doc.IssuedGroupID)
             ${whereClause}
             ORDER BY doc.CreatedDate DESC, doc.DocumentID DESC
         `);
@@ -59,21 +64,27 @@ router.get('/:id', async (req, res) => {
         const pool = database.getPool();
         const { id } = req.params;
 
-        const result = await pool.request().query(`
+        const result = await pool.request().input('id', sql.Int, id).query(`
             SELECT
             doc.DocumentNo,
             doc.CreatedDate,
             doc.DocumentSummary,
             doc.SignedDate,
             doc.SignerPosition,
+            doc.IssuedGroupID,
             COALESCE(u.Fullname, '') as SignerFullname,
-            COALESCE(g.RecursiveGroupName, '') as GroupName,
+            CASE
+                WHEN doc.IssuedGroupID > 0 THEN COALESCE(g.RecursiveGroupName, '')
+                WHEN doc.IssuedGroupID < 0 THEN COALESCE(portal.PortalName, '')
+                ELSE ''
+            END AS GroupName,
             COALESCE(b.Name, '') as BookName,
             COALESCE(d.Name, '') as TypeName,
             COALESCE(f.FileName, '') as FileName
         FROM dbo.WF_Outgoing_Docs doc
         LEFT JOIN dbo.Core_Users u ON u.UserID = doc.SignedUserID
-        LEFT JOIN dbo.Core_Groups g ON g.GroupID = doc.IssuedGroupID
+        LEFT JOIN dbo.Core_Groups g ON doc.IssuedGroupID > 0 AND g.GroupID = doc.IssuedGroupID
+        LEFT JOIN dbo.Core_Portals portal ON doc.IssuedGroupID < 0 AND portal.PortalId = ABS(doc.IssuedGroupID)
         LEFT JOIN dbo.WF_Books b ON b.BookID = doc.BookID
         LEFT JOIN dbo.WF_Doc_Types d ON d.TypeID = doc.TypeID
         LEFT JOIN (
@@ -81,7 +92,7 @@ router.get('/:id', async (req, res) => {
                 ROW_NUMBER() OVER (PARTITION BY DocumentID ORDER BY CreatedDate DESC) as rn
             FROM dbo.WF_Outgoing_Doc_Files
         ) f ON f.DocumentID = doc.DocumentID AND f.rn = 1 
-        WHERE doc.DocumentID = ${id}
+        WHERE doc.DocumentID = @id
         `);
 
         console.log(result.recordset);
