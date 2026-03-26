@@ -117,7 +117,7 @@ router.get('/:id', async (req, res) => {
                     WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.RecursiveGroupName, '')
                     WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')
                     ELSE ''
-                   END AS GroupName
+                   END AS GroupName,
               COALESCE(b.Name, '') AS BookName,
               COALESCE(f.FileName, '') AS FileName,
               COALESCE(o.Name, '') AS IssuedOrganizationName,
@@ -135,7 +135,7 @@ router.get('/:id', async (req, res) => {
             ) f ON f.DocumentID = doc.DocumentID AND f.rn = 1
            LEFT JOIN dbo.Core_Groups grp ON doc.AssignedGroupID > 0 AND grp.GroupID = doc.AssignedGroupID AND grp.IsView = 0 AND grp.IsShow = 1
            LEFT JOIN dbo.Core_Portals portal ON doc.AssignedGroupID < 0 AND portal.PortalId = ABS(doc.AssignedGroupID)
-            WHERE doc.DocumentID = @numberId
+            WHERE doc.DocumentID = @id
         `);
 
         console.log(result.recordset[0]);

@@ -72,7 +72,8 @@ module.exports = {
             env_production: {
                 NODE_ENV: 'production',
                 PORT: 3005,
-                FRONTEND_URL: 'http://10.2.18.33:5173'
+                FRONTEND_URL: 'http://10.2.18.33:5173',
+                FILE_STORAGE_ROOT: '/home/vecadmin/files'
             },
             error_file: './logs/files-service-error.log',
             out_file: './logs/files-service-out.log'
