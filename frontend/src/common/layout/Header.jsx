@@ -88,9 +88,6 @@ const Header = ({ backPath, isDetail = false }) => {
                                     Quản trị
                                 </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem className='cursor-pointer'>
-                                Tài khoản
-                            </DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuGroup>
                             <DropdownMenuItem
