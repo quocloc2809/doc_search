@@ -106,37 +106,18 @@ router.get('/:id', async (req, res) => {
         const { id } = req.params;
         const pool = database.getPool();
 
-        // const result = await pool.request().input('id', sql.Int, id).query(`
-        //         SELECT
-        //             doc.*,
-        //             CASE
-        //                 WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.RecursiveGroupName, '')
-        //                 WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')
-        //                 ELSE ''
-        //             END AS GroupName
-        //         FROM dbo.WF_Incoming_Docs doc
-        //         LEFT JOIN dbo.Core_Groups grp ON doc.AssignedGroupID > 0 AND grp.GroupID = doc.AssignedGroupID AND grp.IsView = 0 AND grp.IsShow = 1
-        //         LEFT JOIN dbo.Core_Portals portal ON doc.AssignedGroupID < 0 AND portal.PortalId = ABS(doc.AssignedGroupID)
-        //         WHERE doc.DocumentID = @id
-        //     `);
-
-        const numberId = Number(id);
-        if (!id || isNaN(numberId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'ID không hợp lệ',
-            });
-        }
-
-        const result = await pool.request().input('numberId', sql.Int, numberId)
-            .query(`
+        const result = await pool.request().input('id', sql.Int, id).query(`
             SELECT
               doc.DocumentID,
               doc.DocumentNo,
               doc.ReceivedDate,
               doc.DocumentSummary,
               doc.issuedOrganizationName2,
-              COALESCE(grp.RecursiveGroupName, '') AS GroupName,
+              CASE
+                    WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.RecursiveGroupName, '')
+                    WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')
+                    ELSE ''
+                   END AS GroupName
               COALESCE(b.Name, '') AS BookName,
               COALESCE(f.FileName, '') AS FileName,
               COALESCE(o.Name, '') AS IssuedOrganizationName,
@@ -152,9 +133,8 @@ router.get('/:id', async (req, res) => {
                 ROW_NUMBER() OVER (PARTITION BY DocumentID ORDER BY CreatedDate DESC) as rn
                 FROM dbo.WF_Incoming_Doc_Files
             ) f ON f.DocumentID = doc.DocumentID AND f.rn = 1
-            LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = ABS(doc.AssignedGroupID)
-                    AND grp.IsView = 0
-                    AND grp.IsShow = 1
+           LEFT JOIN dbo.Core_Groups grp ON doc.AssignedGroupID > 0 AND grp.GroupID = doc.AssignedGroupID AND grp.IsView = 0 AND grp.IsShow = 1
+           LEFT JOIN dbo.Core_Portals portal ON doc.AssignedGroupID < 0 AND portal.PortalId = ABS(doc.AssignedGroupID)
             WHERE doc.DocumentID = @numberId
         `);
 
