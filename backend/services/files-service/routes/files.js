@@ -34,8 +34,15 @@ router.get('/download/incoming/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        // Xử lý path: bỏ / hoặc \ đầu tiên nếu có
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        // Normalize Windows backslashes to forward slashes (Linux compatibility)
+        const normalizedIncoming = filePath.replace(/\\/g, '/');
+        // Strip Windows drive letter (e.g. "D:/folder") or leading slash
+        let relativePath;
+        if (/^[A-Za-z]:\//.test(normalizedIncoming)) {
+            relativePath = normalizedIncoming.replace(/^[A-Za-z]:\//, '');
+        } else {
+            relativePath = normalizedIncoming.replace(/^\//, '');
+        }
         const fullPath = path.resolve(storageRoot, relativePath);
         
         console.log('📂 Storage Root:', storageRoot);
@@ -106,8 +113,15 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        // Xử lý path: bỏ / hoặc \ đầu tiên nếu có
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        // Normalize Windows backslashes to forward slashes (Linux compatibility)
+        const normalizedOutgoing = filePath.replace(/\\/g, '/');
+        // Strip Windows drive letter (e.g. "D:/folder") or leading slash
+        let relativePath;
+        if (/^[A-Za-z]:\//.test(normalizedOutgoing)) {
+            relativePath = normalizedOutgoing.replace(/^[A-Za-z]:\//, '');
+        } else {
+            relativePath = normalizedOutgoing.replace(/^\//, '');
+        }
         const fullPath = path.resolve(storageRoot, relativePath);
         
         console.log('📂 Storage Root:', storageRoot);
@@ -178,7 +192,16 @@ router.get('/download/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        // Normalize Windows backslashes to forward slashes (Linux compatibility)
+        const normalizedLegacy = filePath.replace(/\\/g, '/');
+        // Strip Windows drive letter (e.g. "D:/folder") or leading slash
+        let relativePath;
+        if (/^[A-Za-z]:\//.test(normalizedLegacy)) {
+            relativePath = normalizedLegacy.replace(/^[A-Za-z]:\//, '');
+        } else {
+            relativePath = normalizedLegacy.replace(/^\//, '');
+        }
+
         const fullPath = path.resolve(storageRoot, relativePath);
         
         console.log('📂 Storage Root:', storageRoot);
