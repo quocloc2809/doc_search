@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { logout } from '@/common/auth/authService';
+import { logout, getAuthUser } from '@/common/auth/authService';
 import { APP_ROUTES } from '@/common/routing/routes';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button';
 
 const Header = ({ backPath, isDetail = false }) => {
     const navigate = useNavigate();
+    const user = getAuthUser();
+    const isAdmin = user?.role === 'admin';
     const handleLogout = () => {
         logout();
         navigate(APP_ROUTES.LOGIN, {
@@ -79,6 +81,13 @@ const Header = ({ backPath, isDetail = false }) => {
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuGroup>
+                            {isAdmin && (
+                                <DropdownMenuItem
+                                    onClick={() => navigate(APP_ROUTES.ADMIN)}
+                                    className='cursor-pointer'>
+                                    Quản trị
+                                </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem className='cursor-pointer'>
                                 Tài khoản
                             </DropdownMenuItem>
