@@ -12,7 +12,9 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 
 // Helper function to hash password with salt
 function hashPassword(password, salt) {
-    return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+    return crypto
+        .pbkdf2Sync(password, salt, 10000, 64, 'sha512')
+        .toString('hex');
 }
 
 // Helper function to generate salt
@@ -28,21 +30,19 @@ router.post('/login', async (req, res) => {
         if (!username || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Tên đăng nhập và mật khẩu là bắt buộc'
+                message: 'Tên đăng nhập và mật khẩu là bắt buộc',
             });
         }
 
         if (IS_PRODUCTION && !JWT_SECRET) {
             return res.status(500).json({
                 success: false,
-                message: 'Authentication is not configured'
+                message: 'Authentication is not configured',
             });
         }
 
         const pool = database.getPool();
-        const result = await pool.request()
-            .input('username', username)
-            .query(`
+        const result = await pool.request().input('username', username).query(`
                 SELECT 
                     UserID, 
                     Username, 
@@ -60,7 +60,7 @@ router.post('/login', async (req, res) => {
         if (!result.recordset || result.recordset.length === 0) {
             return res.status(401).json({
                 success: false,
-                message: 'Tên đăng nhập hoặc mật khẩu không đúng'
+                message: 'Tên đăng nhập hoặc mật khẩu không đúng',
             });
         }
 
@@ -69,7 +69,7 @@ router.post('/login', async (req, res) => {
         if (!user.IsActive) {
             return res.status(403).json({
                 success: false,
-                message: 'Tài khoản đã bị vô hiệu hóa'
+                message: 'Tài khoản đã bị vô hiệu hóa',
             });
         }
 
@@ -77,23 +77,26 @@ router.post('/login', async (req, res) => {
         if (hashedPassword !== user.PasswordHash) {
             return res.status(401).json({
                 success: false,
-                message: 'Tên đăng nhập hoặc mật khẩu không đúng'
+                message: 'Tên đăng nhập hoặc mật khẩu không đúng',
             });
         }
 
-        await pool.request()
+        await pool
+            .request()
             .input('userId', user.UserID)
-            .query(`UPDATE dbo.Users SET LastLoginDate = GETDATE() WHERE UserID = @userId`);
+            .query(
+                `UPDATE dbo.Users SET LastLoginDate = GETDATE() WHERE UserID = @userId`,
+            );
 
         const token = jwt.sign(
             {
                 userId: user.UserID,
                 username: user.Username,
                 role: user.Role,
-                groupId: user.GroupID || null
+                groupId: user.GroupID || null,
             },
             JWT_SECRET || 'development-unsafe-secret',
-            { expiresIn: JWT_EXPIRES_IN }
+            { expiresIn: JWT_EXPIRES_IN },
         );
 
         res.json({
@@ -108,16 +111,15 @@ router.post('/login', async (req, res) => {
                 groupId: user.GroupID || null,
                 accessToken: token,
                 tokenType: 'Bearer',
-                expiresIn: JWT_EXPIRES_IN
-            }
+                expiresIn: JWT_EXPIRES_IN,
+            },
         });
-
     } catch (error) {
         console.error('Lỗi đăng nhập:', error);
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
-            error: IS_PRODUCTION ? 'Internal server error' : error.message
+            error: IS_PRODUCTION ? 'Internal server error' : error.message,
         });
     }
 });
@@ -130,41 +132,42 @@ router.post('/register', async (req, res) => {
         if (!username || !password || !fullName) {
             return res.status(400).json({
                 success: false,
-                message: 'Tên đăng nhập, mật khẩu và họ tên là bắt buộc'
+                message: 'Tên đăng nhập, mật khẩu và họ tên là bắt buộc',
             });
         }
 
         if (typeof password !== 'string' || password.length < 8) {
             return res.status(400).json({
                 success: false,
-                message: 'Mật khẩu phải có tối thiểu 8 ký tự'
+                message: 'Mật khẩu phải có tối thiểu 8 ký tự',
             });
         }
 
         const pool = database.getPool();
 
-        const checkResult = await pool.request()
+        const checkResult = await pool
+            .request()
             .input('username', sql.NVarChar(50), username)
             .query('SELECT UserID FROM dbo.Users WHERE Username = @username');
 
         if (checkResult.recordset.length > 0) {
             return res.status(409).json({
                 success: false,
-                message: 'Tên đăng nhập đã tồn tại'
+                message: 'Tên đăng nhập đã tồn tại',
             });
         }
 
         const salt = generateSalt();
         const passwordHash = hashPassword(password, salt);
 
-        const result = await pool.request()
+        const result = await pool
+            .request()
             .input('username', sql.NVarChar(50), username)
             .input('passwordHash', sql.NVarChar(200), passwordHash)
             .input('salt', sql.NVarChar(50), salt)
             .input('fullName', sql.NVarChar(100), fullName)
             .input('email', sql.NVarChar(100), email || null)
-            .input('role', sql.NVarChar(20), role || 'user')
-            .query(`
+            .input('role', sql.NVarChar(20), role || 'user').query(`
                 INSERT INTO dbo.Users (Username, PasswordHash, Salt, FullName, Email, Role, IsActive, CreatedDate)
                 VALUES (@username, @passwordHash, @salt, @fullName, @email, @role, 1, GETDATE());
                 SELECT SCOPE_IDENTITY() AS UserID;
@@ -178,16 +181,15 @@ router.post('/register', async (req, res) => {
             data: {
                 userId: newUserId,
                 username: username,
-                fullName: fullName
-            }
+                fullName: fullName,
+            },
         });
-
     } catch (error) {
         console.error('Lỗi tạo tài khoản:', error);
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
-            error: IS_PRODUCTION ? 'Internal server error' : error.message
+            error: IS_PRODUCTION ? 'Internal server error' : error.message,
         });
     }
 });
@@ -199,18 +201,28 @@ function requireAdmin(req, res, next) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
     if (!token) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
+        return res
+            .status(401)
+            .json({ success: false, message: 'Unauthorized' });
     }
 
     try {
-        const decoded = require('jsonwebtoken').verify(token, JWT_SECRET || 'development-unsafe-secret');
+        const decoded = require('jsonwebtoken').verify(
+            token,
+            JWT_SECRET || 'development-unsafe-secret',
+        );
         if (decoded.role !== 'admin') {
-            return res.status(403).json({ success: false, message: 'Forbidden: Yêu cầu quyền admin' });
+            return res.status(403).json({
+                success: false,
+                message: 'Forbidden: Yêu cầu quyền admin',
+            });
         }
         req.user = decoded;
         return next();
     } catch {
-        return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        return res
+            .status(401)
+            .json({ success: false, message: 'Invalid or expired token' });
     }
 }
 
@@ -229,7 +241,11 @@ router.get('/admin/users', requireAdmin, async (req, res) => {
         res.json({ success: true, data: result.recordset });
     } catch (error) {
         console.error('Lỗi lấy danh sách tài khoản:', error);
-        res.status(500).json({ success: false, message: 'Lỗi server', error: IS_PRODUCTION ? 'Internal server error' : error.message });
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server',
+            error: IS_PRODUCTION ? 'Internal server error' : error.message,
+        });
     }
 });
 
@@ -239,50 +255,69 @@ router.post('/admin/users', requireAdmin, async (req, res) => {
         const { username, password, fullName, email, role, groupId } = req.body;
 
         if (!username || !password || !fullName) {
-            return res.status(400).json({ success: false, message: 'Tên đăng nhập, mật khẩu và họ tên là bắt buộc' });
+            return res.status(400).json({
+                success: false,
+                message: 'Tên đăng nhập, mật khẩu và họ tên là bắt buộc',
+            });
         }
 
         if (typeof password !== 'string' || password.length < 8) {
-            return res.status(400).json({ success: false, message: 'Mật khẩu phải có tối thiểu 8 ký tự' });
+            return res.status(400).json({
+                success: false,
+                message: 'Mật khẩu phải có tối thiểu 8 ký tự',
+            });
         }
 
         const validRoles = ['admin', 'user'];
         const assignedRole = validRoles.includes(role) ? role : 'user';
         const assignedGroupId = groupId ? parseInt(groupId, 10) : null;
         if (assignedGroupId !== null && !Number.isFinite(assignedGroupId)) {
-            return res.status(400).json({ success: false, message: 'GroupID không hợp lệ' });
+            return res
+                .status(400)
+                .json({ success: false, message: 'GroupID không hợp lệ' });
         }
 
         const pool = database.getPool();
-        const checkResult = await pool.request()
+        const checkResult = await pool
+            .request()
             .input('username', sql.NVarChar(50), username)
             .query('SELECT UserID FROM dbo.Users WHERE Username = @username');
 
         if (checkResult.recordset.length > 0) {
-            return res.status(409).json({ success: false, message: 'Tên đăng nhập đã tồn tại' });
+            return res
+                .status(409)
+                .json({ success: false, message: 'Tên đăng nhập đã tồn tại' });
         }
 
         const salt = generateSalt();
         const passwordHash = hashPassword(password, salt);
 
-        const result = await pool.request()
+        const result = await pool
+            .request()
             .input('username', sql.NVarChar(50), username)
             .input('passwordHash', sql.NVarChar(200), passwordHash)
             .input('salt', sql.NVarChar(50), salt)
             .input('fullName', sql.NVarChar(100), fullName)
             .input('email', sql.NVarChar(100), email || null)
             .input('role', sql.NVarChar(20), assignedRole)
-            .input('groupId', sql.Int, assignedGroupId)
-            .query(`
+            .input('groupId', sql.Int, assignedGroupId).query(`
                 INSERT INTO dbo.Users (Username, PasswordHash, Salt, FullName, Email, Role, GroupID, IsActive, CreatedDate)
                 VALUES (@username, @passwordHash, @salt, @fullName, @email, @role, @groupId, 1, GETDATE());
                 SELECT SCOPE_IDENTITY() AS UserID;
             `);
 
-        res.status(201).json({ success: true, message: 'Tạo tài khoản thành công', data: { userId: result.recordset[0].UserID, username, fullName } });
+        res.status(201).json({
+            success: true,
+            message: 'Tạo tài khoản thành công',
+            data: { userId: result.recordset[0].UserID, username, fullName },
+        });
     } catch (error) {
         console.error('Lỗi tạo tài khoản admin:', error);
-        res.status(500).json({ success: false, message: 'Lỗi server', error: IS_PRODUCTION ? 'Internal server error' : error.message });
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server',
+            error: IS_PRODUCTION ? 'Internal server error' : error.message,
+        });
     }
 });
 
@@ -291,39 +326,53 @@ router.put('/admin/users/:id', requireAdmin, async (req, res) => {
     try {
         const userId = parseInt(req.params.id, 10);
         if (!Number.isFinite(userId) || userId <= 0) {
-            return res.status(400).json({ success: false, message: 'ID tài khoản không hợp lệ' });
+            return res
+                .status(400)
+                .json({ success: false, message: 'ID tài khoản không hợp lệ' });
         }
 
-        const { fullName, email, role, isActive, newPassword, groupId } = req.body;
+        const { fullName, email, role, isActive, newPassword, groupId } =
+            req.body;
 
         if (!fullName) {
-            return res.status(400).json({ success: false, message: 'Họ tên là bắt buộc' });
+            return res
+                .status(400)
+                .json({ success: false, message: 'Họ tên là bắt buộc' });
         }
 
         const validRoles = ['admin', 'user'];
         const assignedRole = validRoles.includes(role) ? role : 'user';
         const assignedGroupId = groupId ? parseInt(groupId, 10) : null;
         if (assignedGroupId !== null && !Number.isFinite(assignedGroupId)) {
-            return res.status(400).json({ success: false, message: 'GroupID không hợp lệ' });
+            return res
+                .status(400)
+                .json({ success: false, message: 'GroupID không hợp lệ' });
         }
 
         const pool = database.getPool();
 
-        const checkResult = await pool.request()
+        const checkResult = await pool
+            .request()
             .input('userId', sql.Int, userId)
             .query('SELECT UserID FROM dbo.Users WHERE UserID = @userId');
 
         if (checkResult.recordset.length === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
+            return res
+                .status(404)
+                .json({ success: false, message: 'Không tìm thấy tài khoản' });
         }
 
         if (newPassword) {
             if (typeof newPassword !== 'string' || newPassword.length < 8) {
-                return res.status(400).json({ success: false, message: 'Mật khẩu mới phải có tối thiểu 8 ký tự' });
+                return res.status(400).json({
+                    success: false,
+                    message: 'Mật khẩu mới phải có tối thiểu 8 ký tự',
+                });
             }
             const newSalt = generateSalt();
             const newPasswordHash = hashPassword(newPassword, newSalt);
-            await pool.request()
+            await pool
+                .request()
                 .input('userId', sql.Int, userId)
                 .input('fullName', sql.NVarChar(100), fullName)
                 .input('email', sql.NVarChar(100), email || null)
@@ -331,22 +380,21 @@ router.put('/admin/users/:id', requireAdmin, async (req, res) => {
                 .input('isActive', sql.Bit, isActive !== false ? 1 : 0)
                 .input('groupId', sql.Int, assignedGroupId)
                 .input('passwordHash', sql.NVarChar(200), newPasswordHash)
-                .input('salt', sql.NVarChar(50), newSalt)
-                .query(`
+                .input('salt', sql.NVarChar(50), newSalt).query(`
                     UPDATE dbo.Users
                     SET FullName = @fullName, Email = @email, Role = @role, IsActive = @isActive,
                         GroupID = @groupId, PasswordHash = @passwordHash, Salt = @salt, UpdatedDate = GETDATE()
                     WHERE UserID = @userId
                 `);
         } else {
-            await pool.request()
+            await pool
+                .request()
                 .input('userId', sql.Int, userId)
                 .input('fullName', sql.NVarChar(100), fullName)
                 .input('email', sql.NVarChar(100), email || null)
                 .input('role', sql.NVarChar(20), assignedRole)
                 .input('isActive', sql.Bit, isActive !== false ? 1 : 0)
-                .input('groupId', sql.Int, assignedGroupId)
-                .query(`
+                .input('groupId', sql.Int, assignedGroupId).query(`
                     UPDATE dbo.Users
                     SET FullName = @fullName, Email = @email, Role = @role, IsActive = @isActive,
                         GroupID = @groupId, UpdatedDate = GETDATE()
@@ -357,7 +405,11 @@ router.put('/admin/users/:id', requireAdmin, async (req, res) => {
         res.json({ success: true, message: 'Cập nhật tài khoản thành công' });
     } catch (error) {
         console.error('Lỗi cập nhật tài khoản:', error);
-        res.status(500).json({ success: false, message: 'Lỗi server', error: IS_PRODUCTION ? 'Internal server error' : error.message });
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server',
+            error: IS_PRODUCTION ? 'Internal server error' : error.message,
+        });
     }
 });
 
@@ -366,31 +418,51 @@ router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
     try {
         const userId = parseInt(req.params.id, 10);
         if (!Number.isFinite(userId) || userId <= 0) {
-            return res.status(400).json({ success: false, message: 'ID tài khoản không hợp lệ' });
+            return res
+                .status(400)
+                .json({ success: false, message: 'ID tài khoản không hợp lệ' });
         }
 
         // Prevent admin from deleting their own account
         if (req.user && req.user.userId === userId) {
-            return res.status(400).json({ success: false, message: 'Không thể xoá tài khoản đang đăng nhập' });
+            return res.status(400).json({
+                success: false,
+                message: 'Không thể xoá tài khoản đang đăng nhập',
+            });
         }
 
         const pool = database.getPool();
-        const result = await pool.request()
+        const result = await pool
+            .request()
             .input('userId', sql.Int, userId)
             .query('DELETE FROM dbo.Users WHERE UserID = @userId');
 
         if (result.rowsAffected[0] === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
+            return res
+                .status(404)
+                .json({ success: false, message: 'Không tìm thấy tài khoản' });
         }
 
         res.json({ success: true, message: 'Xoá tài khoản thành công' });
     } catch (error) {
         console.error('Lỗi xoá tài khoản:', error);
         // Foreign key / reference constraint
-        if (error && (error.number === 547 || (error.message && error.message.includes('REFERENCE')))) {
-            return res.status(409).json({ success: false, message: 'Không thể xoá tài khoản vì đang được tham chiếu bởi dữ liệu khác trong hệ thống.' });
+        if (
+            error &&
+            (error.number === 547 ||
+                (error.message && error.message.includes('REFERENCE')))
+        ) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    'Không thể xoá tài khoản vì đang được tham chiếu bởi dữ liệu khác trong hệ thống.',
+            });
         }
-        res.status(500).json({ success: false, message: 'Lỗi server', error: error.message });
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server',
+            error: error.message,
+        });
     }
 });
 
@@ -402,27 +474,30 @@ router.post('/change-password', async (req, res) => {
         if (!userId || !oldPassword || !newPassword) {
             return res.status(400).json({
                 success: false,
-                message: 'Thiếu thông tin bắt buộc'
+                message: 'Thiếu thông tin bắt buộc',
             });
         }
 
         if (typeof newPassword !== 'string' || newPassword.length < 8) {
             return res.status(400).json({
                 success: false,
-                message: 'Mật khẩu mới phải có tối thiểu 8 ký tự'
+                message: 'Mật khẩu mới phải có tối thiểu 8 ký tự',
             });
         }
 
         const pool = database.getPool();
 
-        const result = await pool.request()
+        const result = await pool
+            .request()
             .input('userId', sql.Int, userId)
-            .query('SELECT PasswordHash, Salt FROM dbo.Users WHERE UserID = @userId');
+            .query(
+                'SELECT PasswordHash, Salt FROM dbo.Users WHERE UserID = @userId',
+            );
 
         if (!result.recordset || result.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Không tìm thấy người dùng'
+                message: 'Không tìm thấy người dùng',
             });
         }
 
@@ -432,18 +507,18 @@ router.post('/change-password', async (req, res) => {
         if (oldHashedPassword !== user.PasswordHash) {
             return res.status(401).json({
                 success: false,
-                message: 'Mật khẩu cũ không đúng'
+                message: 'Mật khẩu cũ không đúng',
             });
         }
 
         const newSalt = generateSalt();
         const newPasswordHash = hashPassword(newPassword, newSalt);
 
-        await pool.request()
+        await pool
+            .request()
             .input('userId', sql.Int, userId)
             .input('passwordHash', sql.NVarChar(200), newPasswordHash)
-            .input('salt', sql.NVarChar(50), newSalt)
-            .query(`
+            .input('salt', sql.NVarChar(50), newSalt).query(`
                 UPDATE dbo.Users 
                 SET PasswordHash = @passwordHash, Salt = @salt, UpdatedDate = GETDATE()
                 WHERE UserID = @userId
@@ -451,15 +526,14 @@ router.post('/change-password', async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Đổi mật khẩu thành công'
+            message: 'Đổi mật khẩu thành công',
         });
-
     } catch (error) {
         console.error('Lỗi đổi mật khẩu:', error);
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
-            error: IS_PRODUCTION ? 'Internal server error' : error.message
+            error: IS_PRODUCTION ? 'Internal server error' : error.message,
         });
     }
 });

@@ -13,7 +13,8 @@ router.get('/', async (req, res) => {
         const userGroupId = req.headers['x-user-group-id'] || '';
         const groupIdNum = parseInt(userGroupId, 10);
         const isAdmin = userRole === 'admin';
-        const hasGroupFilter = !isAdmin && Number.isFinite(groupIdNum) && groupIdNum !== 0;
+        const hasGroupFilter =
+            !isAdmin && Number.isFinite(groupIdNum) && groupIdNum !== 0;
 
         const request = pool.request();
         let whereClause = '';
@@ -95,15 +96,24 @@ router.get('/:id', async (req, res) => {
         WHERE doc.DocumentID = @id
         `);
 
-        console.log(result.recordset);
+        if (result.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy công văn đi',
+            });
+        }
 
         res.json({
             success: true,
             data: result.recordset[0] || {},
         });
     } catch (error) {
-        console.error('Lỗi lấy chi tiết outgoing document:', error);
-        res.status(500).json({});
+        console.error('Lỗi lấy chi tiết công văn đi:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server',
+            error: IS_PRODUCTION ? 'Internal server error' : error.message,
+        });
     }
 });
 
@@ -138,45 +148,6 @@ router.get('/search', async (req, res) => {
         });
     } catch (error) {
         console.error('Lỗi tìm kiếm outgoing documents:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Lỗi server',
-            error: IS_PRODUCTION ? 'Internal server error' : error.message,
-        });
-    }
-});
-
-router.get('/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const pool = database.getPool();
-
-        const result = await pool.request()
-            .input('id', sql.Int, id)
-            .query(`
-                SELECT
-                    doc.*,
-                    COALESCE(u.Fullname, '') AS SignerFullname,
-                    COALESCE(g.GroupName, '') AS GroupName
-                FROM dbo.WF_Outgoing_Docs doc
-                LEFT JOIN dbo.Core_Users u ON u.UserID = doc.SignedUserID
-                LEFT JOIN dbo.Core_Groups g ON g.GroupID = ABS(doc.IssuedGroupID) AND g.IsView = 0 AND g.IsShow = 1
-                WHERE doc.DocumentID = @id
-            `);
-
-        if (result.recordset.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy công văn đi'
-            });
-        }
-
-        res.json({
-            success: true,
-            data: result.recordset[0]
-        });
-    } catch (error) {
-        console.error('Lỗi lấy chi tiết công văn đi:', error);
         res.status(500).json({
             success: false,
             message: 'Lỗi server',

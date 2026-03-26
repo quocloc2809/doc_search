@@ -6,16 +6,19 @@ import {
     useIncomingDocuments,
 } from '../common/hooks';
 import { CommonTable } from '../common/table';
-import { ErrorMessage, LoadingSpinner, SearchBar } from '../common/ui';
-import { formatDateTime, normalizeText } from '../common/utils';
+import { ErrorMessage, SearchBar } from '../common/ui';
+import { formatDate, normalizeText } from '../common/utils';
 import './IncomingDocumentsPage.css';
-import { Eye, Download, Funnel } from 'lucide-react';
+import { Eye, Download } from 'lucide-react';
 import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import CustomSelect from '@/components/custom/CustomSelect';
+import FilterDialog from '@/components/filter/FilterDialog';
 
 const SEARCH_FIELDS = [
     { value: 'all', label: 'Tất cả' },
@@ -38,7 +41,6 @@ export default function IncomingDocumentsPage() {
     } = useFileDownload();
     const [searchKeyword, setSearchKeyword] = useState('');
     const [searchField, setSearchField] = useState('all');
-    const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [filters, setFilters] = useState({
         department: 'all',
         year: 'all',
@@ -57,19 +59,16 @@ export default function IncomingDocumentsPage() {
     );
 
     const handleOpenFilters = () => {
-        setDraftFilters(filters);
-        setIsFilterOpen(true);
+        handleResetFilters();
         refetchDepartments();
     };
 
-    const handleCloseFilters = () => {
-        setIsFilterOpen(false);
+    const handleResetFilters = () => {
         setDraftFilters(filters);
     };
 
     const handleApplyFilters = () => {
         setFilters(draftFilters);
-        setIsFilterOpen(false);
     };
 
     const handleIncomingDetail = id => navigate(`/incoming-documents/${id}`);
@@ -149,14 +148,14 @@ export default function IncomingDocumentsPage() {
         {
             key: 'CreatedDate',
             title: 'Ngày tạo',
-            render: row => formatDateTime(row.CreatedDate),
+            render: row => formatDate(row.CreatedDate),
         },
         { key: 'LeaderName', title: 'Lãnh đạo bút phê' },
         { key: 'GroupName', title: 'Đơn vị xử lý chính' },
         {
             key: 'ExpiredDate',
             title: 'Ngày hết hạn',
-            render: row => formatDateTime(row.ExpiredDate),
+            render: row => formatDate(row.ExpiredDate),
         },
         {
             key: 'actions',
@@ -168,8 +167,9 @@ export default function IncomingDocumentsPage() {
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button
-                                type='button'
-                                onClick={() => handleDownload(row.DocumentID)}>
+                                onClick={() =>
+                                    handleIncomingDetail(row.DocumentID)
+                                }>
                                 <Eye size={12} />
                             </Button>
                         </TooltipTrigger>
@@ -180,7 +180,6 @@ export default function IncomingDocumentsPage() {
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button
-                                type='button'
                                 disabled={isDownloading}
                                 onClick={() => handleDownload(row.DocumentID)}>
                                 <Download size={12} />
@@ -195,15 +194,38 @@ export default function IncomingDocumentsPage() {
         },
     ];
 
-    return (
-        <>
-            {isLoading ? (
-                <LoadingSpinner text='Đang tải văn bản đến...' />
-            ) : null}
+    const departmentOptions = useMemo(
+        () => [
+            { value: 'all', label: 'Tất cả đơn vị' },
+            ...departments.map(dept => ({
+                value: String(dept.GroupID),
+                label: dept.GroupName,
+            })),
+        ],
+        [departments],
+    );
+
+    const formattedYearOptions = useMemo(
+        () => [
+            { value: 'all', label: 'Tất cả năm' },
+            ...yearOptions.map(year => ({
+                value: String(year),
+                label: String(year),
+            })),
+        ],
+        [yearOptions],
+    );
+
+    if (error || departmentsError || downloadError) {
+        return (
             <ErrorMessage
                 message={error || departmentsError || downloadError}
             />
+        );
+    }
 
+    return (
+        <>
             <div className='incoming-toolbar'>
                 <div className='incoming-toolbar-left'>
                     <SearchBar
@@ -214,11 +236,37 @@ export default function IncomingDocumentsPage() {
                         placeholder='Tìm kiếm văn bản...'
                         style={{ marginBottom: 0 }}
                     />
-                    <Button onClick={handleOpenFilters}>
-                        <Funnel size={12} />
-                    </Button>
+                    <FilterDialog
+                        handleFilters={handleApplyFilters}
+                        handleOpenFilters={handleOpenFilters}>
+                        <div className='grid gap-3'>
+                            <Label htmlFor='filter-department'>Đơn vị</Label>
+                            <CustomSelect
+                                id='filter-department'
+                                options={departmentOptions}
+                                onChange={newValue =>
+                                    setDraftFilters(prev => ({
+                                        ...prev,
+                                        department: newValue.value,
+                                    }))
+                                }
+                                value={draftFilters.department}
+                            />
+                            <Label htmlFor='filter-year'>Năm</Label>
+                            <CustomSelect
+                                id='filter-year'
+                                options={formattedYearOptions}
+                                onChange={newValue =>
+                                    setDraftFilters(prev => ({
+                                        ...prev,
+                                        year: newValue.value,
+                                    }))
+                                }
+                                value={String(draftFilters.year)}
+                            />
+                        </div>
+                    </FilterDialog>
                 </div>
-
                 <div className='filter-pill'>
                     Đơn vị:{' '}
                     <strong>
@@ -237,7 +285,6 @@ export default function IncomingDocumentsPage() {
                     </strong>
                 </div>
             </div>
-
             <CommonTable
                 columns={columns}
                 data={filteredDocuments}
@@ -253,85 +300,11 @@ export default function IncomingDocumentsPage() {
                 searchable={false}
                 pagination
                 autoPageSize={false}
-                initialPageSize={15}
-                pageSizeOptions={[15]}
+                initialPageSize={20}
+                pageSizeOptions={[5, 15, 20]}
                 emptyText='Không có văn bản đến'
+                isLoading={isLoading}
             />
-
-            {isFilterOpen ? (
-                <div className='filter-overlay' onClick={handleCloseFilters}>
-                    <div
-                        className='filter-modal'
-                        onClick={event => event.stopPropagation()}>
-                        <div className='filter-header'>
-                            <h3>Bộ lọc dữ liệu</h3>
-                            <button
-                                type='button'
-                                className='filter-close'
-                                onClick={handleCloseFilters}>
-                                ×
-                            </button>
-                        </div>
-
-                        <div className='filter-grid'>
-                            <label htmlFor='filter-department'>
-                                Đơn vị
-                                <select
-                                    id='filter-department'
-                                    value={draftFilters.department}
-                                    onChange={event =>
-                                        setDraftFilters(prev => ({
-                                            ...prev,
-                                            department: event.target.value,
-                                        }))
-                                    }>
-                                    <option value='all'>Tất cả đơn vị</option>
-                                    {departments.map(department => (
-                                        <option
-                                            key={department.GroupID}
-                                            value={String(department.GroupID)}>
-                                            {department.GroupName}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-
-                            <label htmlFor='filter-year'>
-                                Năm
-                                <select
-                                    id='filter-year'
-                                    value={draftFilters.year}
-                                    onChange={event =>
-                                        setDraftFilters(prev => ({
-                                            ...prev,
-                                            year: event.target.value,
-                                        }))
-                                    }>
-                                    <option value='all'>Tất cả năm</option>
-                                    {yearOptions.map(year => (
-                                        <option key={year} value={year}>
-                                            {year}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        </div>
-
-                        <div className='filter-actions'>
-                            <Button
-                                className='button-muted'
-                                onClick={handleCloseFilters}>
-                                Hủy
-                            </Button>
-                            <Button
-                                className='button-filter'
-                                onClick={handleApplyFilters}>
-                                Áp dụng
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
         </>
     );
 }
