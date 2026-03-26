@@ -1,4 +1,5 @@
-import { Button } from '@/components/ui/button';
+import { useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import {
     Breadcrumb,
     BreadcrumbItem,
@@ -7,72 +8,54 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { Separator } from '@/components/ui/separator';
-import { useNavigate, useParams } from 'react-router-dom';
 import { APP_ROUTES } from '@/common/routing/routes';
 import { Link } from 'react-router-dom';
 import { Paperclip, Download } from 'lucide-react';
 import { useIncomingDocumentDetail } from '@/common/hooks/useIncomingDocumentDetail';
 import { ErrorMessage, LoadingSpinner } from '@/common/ui';
-import { useMemo } from 'react';
-
-const formatDate = date => {
-    if (!date) return '';
-    return new Date(date).toLocaleDateString('vi-VN');
-};
+import Header from '@/common/layout/Header';
+import { formatDate } from '@/common/utils';
+import DocumentDetailSkeleton from '@/components/loading/DocumentDetailSkeleton';
+import { Separator } from '@/components/ui/separator';
 
 function IncomingDetailPage() {
-    const navigate = useNavigate();
     const { id } = useParams();
     const { document, isLoading, error } = useIncomingDocumentDetail(id);
-
-    const handleBack = () => {
-        navigate(APP_ROUTES.INCOMING_DOCUMENTS);
-    };
-
-    console.log(document);
 
     const infoFields = useMemo(
         () => [
             ['Số hiệu', document?.DocumentNo],
+            ['Ngày đến', formatDate(document?.ReceivedDate)],
             ['Sổ văn bản', document?.BookName],
-            ['Loại văn bản', document?.TypeName],
-            ['Đơn vị ban hành', document?.GroupName],
-            ['Ngày ban hành', formatDate(document?.SignedDate)],
-            ['Người ký', document?.SignerFullname],
+            [
+                'Ban hành',
+                document?.IssuedOrganizationName ||
+                    document?.issuedOrganizationName2,
+            ],
         ],
         [document],
     );
 
+    const infoInFields = useMemo(
+        () => [
+            ['Lãnh đạo bút phê', document?.LeaderName],
+            ['Đơn vị xử lý chính', document?.GroupName],
+            ['Người xử lý chính', document?.AssignedUserName],
+        ],
+        [document],
+    );
+
+    if (isLoading) {
+        return <DocumentDetailSkeleton />;
+    }
+
+    if (error) {
+        return <ErrorMessage message={error} />;
+    }
+
     return (
         <div className='min-h-dvh-screen bg-slate-100 font-sans'>
-            {/* Header */}
-            <div className='shadow-lg px-8 bg-linear-to-br from-blue-900 to-blue-600'>
-                <div className='max-w-7xl mx-auto flex items-center justify-between py-4'>
-                    <div className='flex items-center gap-4'>
-                        <Button
-                            onClick={handleBack}
-                            className='inline-flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium bg-white/15 hover:bg-white/25 px-4 py-2 rounded-lg transition cursor-pointer border-none whitespace-nowrap'>
-                            ← Danh sách
-                        </Button>
-                        <Separator
-                            orientation='vertical'
-                            className='bg-white/25'
-                        />
-                        <div className='text-white/70 text-xs uppercase tracking-widest'>
-                            <span>Chi tiết văn bản</span>
-                        </div>
-                    </div>
-                    <div className='flex items-center gap-2 bg-white/15 rounded-full px-4 py-1.5'>
-                        <div className='w-7 h-7 rounded-full bg-amber-400 flex items-center justify-center text-xs font-bold text-amber-900'>
-                            AT
-                        </div>
-                        <span className='text-white text-sm font-medium'>
-                            Admin
-                        </span>
-                    </div>
-                </div>
-            </div>
+            <Header backPath={APP_ROUTES.INCOMING_DOCUMENTS} isDetail />
             <div className='bg-white border-b border-gray-200'>
                 <div className='max-w-7xl mx-auto px-8 py-2.5 flex gap-2 items-center text-xs text-gray-500'>
                     <Breadcrumb>
@@ -94,10 +77,6 @@ function IncomingDetailPage() {
                     </Breadcrumb>
                 </div>
             </div>
-            {isLoading ? (
-                <LoadingSpinner text='Đang tải chi tiết văn bản...' />
-            ) : null}
-            <ErrorMessage message={error} />
             <div className='max-w-7xl mx-auto px-8 py-7'>
                 <div className='flex gap-6 items-start flex-wrap lg:flex-nowrap'>
                     <div className='flex-3 min-w-0'>
@@ -107,7 +86,7 @@ function IncomingDetailPage() {
                                 <div className='flex items-center gap-5'>
                                     <div>
                                         <p className='text-white/70 text-xs font-medium uppercase tracking-widest mb-1.5'>
-                                            Văn bản đi
+                                            Văn bản đến
                                         </p>
                                         <p className='text-white text-2xl font-extrabold leading-tight'>
                                             {document?.DocumentNo}
@@ -116,7 +95,7 @@ function IncomingDetailPage() {
                                 </div>
                             </div>
 
-                            <div className='px-8 py-6 border-b border-gray-100'>
+                            <div className='px-8 py-6'>
                                 <p className='text-xs text-gray-400 font-bold uppercase tracking-widest mb-3'>
                                     Trích yếu nội dung
                                 </p>
@@ -125,43 +104,52 @@ function IncomingDetailPage() {
                                     {document?.DocumentSummary}
                                 </p>
                             </div>
-
-                            <div className='px-8 py-6 border-b border-gray-100'>
-                                <p className='text-xs text-gray-400 font-bold uppercase tracking-widest mb-4'>
-                                    Thông tin văn bản
-                                </p>
-                                <div className='grid grid-cols-2 gap-3'>
-                                    {infoFields.map(([k, v]) => (
-                                        <div
-                                            key={k}
-                                            className='bg-gray-50 rounded-xl p-4 border border-gray-100'>
-                                            <p className='text-xs text-gray-400 font-semibold mb-1.5'>
-                                                {k}
-                                            </p>
-                                            <p className='font-semibold text-sm text-gray-800'>
-                                                {v}
-                                            </p>
-                                        </div>
-                                    ))}
+                            <Separator />
+                            <div className='grid grid-cols-3 gap-2 relative'>
+                                <div className='px-8 py-6 border-b border-gray-100 col-span-1'>
+                                    <p className='text-xs text-gray-400 font-bold uppercase tracking-widest mb-4'>
+                                        Thông tin chung
+                                    </p>
+                                    <div className='grid gap-3'>
+                                        {infoFields.map(([k, v]) => (
+                                            <div
+                                                key={k}
+                                                className='bg-gray-50 rounded-xl p-4 border border-gray-100'>
+                                                <p className='text-xs text-gray-400 font-semibold mb-1.5'>
+                                                    {k}
+                                                </p>
+                                                <p className='font-semibold text-sm text-gray-800'>
+                                                    {v || '\u00A0'}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className='absolute left-1/3 top-6 bottom-6 flex items-center'>
+                                    <Separator orientation='vertical' />
+                                </div>
+                                <div className='px-8 py-6 border-b border-gray-100 col-span-2'>
+                                    <p className='text-xs text-gray-400 font-bold uppercase tracking-widest mb-4'>
+                                        Thông tin nhận văn bản
+                                    </p>
+                                    <div className='grid grid-cols-2 gap-3'>
+                                        {infoInFields.map(([k, v]) => (
+                                            <div
+                                                key={k}
+                                                className='bg-gray-50 rounded-xl p-4 border border-gray-100'>
+                                                <p className='text-xs text-gray-400 font-semibold mb-1.5'>
+                                                    {k}
+                                                </p>
+                                                <p className='font-semibold text-sm text-gray-800'>
+                                                    {v || '\u00A0'}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
                         <div className='w-64 lg:w-full shrink-0 flex flex-col gap-4'>
-                            {/* <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
-                                <p className='text-xs text-gray-400 font-bold uppercase tracking-widest mb-3'>
-                                    Mức độ ưu tiên
-                                </p>
-                                <span
-                                    className={`inline-block px-4 py-1.5 rounded-lg text-sm font-bold ${pr}`}>
-                                    {vb.mucDoUuTien === 'Thượng khẩn'
-                                        ? '🔴 '
-                                        : vb.mucDoUuTien === 'Khẩn'
-                                          ? '🟠 '
-                                          : '🟢 '}
-                                    {vb.mucDoUuTien}
-                                </span>
-                            </div> */}
                             <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-5'>
                                 <p className='text-xs text-gray-400 font-bold uppercase tracking-widest mb-4'>
                                     <Paperclip className='inline-block mr-2 h-4 w-4' />

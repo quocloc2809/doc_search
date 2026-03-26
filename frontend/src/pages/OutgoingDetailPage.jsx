@@ -12,9 +12,10 @@ import {
 } from '@/components/ui/breadcrumb';
 import { APP_ROUTES } from '@/common/routing/routes';
 import { Paperclip, Download } from 'lucide-react';
-import { ErrorMessage, LoadingSpinner } from '@/common/ui';
+import { ErrorMessage } from '@/common/ui';
 import Header from '@/common/layout/Header';
 import { formatDate } from '@/common/utils';
+import DocumentDetailSkeleton from '@/components/loading/DocumentDetailSkeleton';
 
 function OutgoingDetailPage() {
     const { id } = useParams();
@@ -31,6 +32,14 @@ function OutgoingDetailPage() {
         ],
         [document],
     );
+
+    if (isLoading) {
+        return <DocumentDetailSkeleton />;
+    }
+
+    if (error) {
+        return <ErrorMessage message={error} />;
+    }
 
     return (
         <div className='min-h-dvh-screen bg-slate-100 font-sans'>
@@ -56,10 +65,6 @@ function OutgoingDetailPage() {
                     </Breadcrumb>
                 </div>
             </div>
-            {isLoading ? (
-                <LoadingSpinner text='Đang tải chi tiết văn bản...' />
-            ) : null}
-            <ErrorMessage message={error} />
             <div className='max-w-7xl mx-auto px-8 py-7'>
                 <div className='flex gap-6 items-start flex-wrap lg:flex-nowrap'>
                     <div className='flex-3 min-w-0'>
@@ -101,7 +106,7 @@ function OutgoingDetailPage() {
                                                 {k}
                                             </p>
                                             <p className='font-semibold text-sm text-gray-800'>
-                                                {v}
+                                                {v || '\u00A0'}
                                             </p>
                                         </div>
                                     ))}

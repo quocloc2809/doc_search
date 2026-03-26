@@ -2,6 +2,7 @@ import { isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import { Pagination, SearchBar, Tooltip } from '../ui';
 import { calculateTableLayout } from './calculateTableLayout';
 import { normalizeText } from '@/common/utils';
+import TableLoading from '@/components/loading/TableLoading';
 
 function defaultGetCellValue(row, column) {
     if (!column?.key) {
@@ -33,6 +34,7 @@ export default function CommonTable({
     tableMaxHeight = '',
     emptyText = 'Không có dữ liệu',
     showOverflowHint = true,
+    isLoading = false,
 }) {
     const [page, setPage] = useState(initialPage);
     const [pageSize, setPageSize] = useState(initialPageSize);
@@ -258,9 +260,10 @@ export default function CommonTable({
             ) : null}
 
             <div
-                className='common-table-scroll'
+                className='common-table-scroll relative'
                 ref={tableScrollRef}
                 style={tableScrollStyle}>
+                {isLoading && <TableLoading />}
                 <table
                     className='common-table'
                     style={{ width: `${renderedTableWidth}px` }}>
@@ -381,7 +384,7 @@ export default function CommonTable({
                         autoPageSize ? [effectivePageSize] : pageSizeOptions
                     }
                     disablePageSizeSelect={autoPageSize}
-                    showPageSizeSelect={false}
+                    // showPageSizeSelect={false}
                 />
             ) : null}
         </div>

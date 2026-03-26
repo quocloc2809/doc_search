@@ -6,16 +6,19 @@ import {
     useOutgoingDocuments,
 } from '../common/hooks';
 import { CommonTable } from '../common/table';
-import { ErrorMessage, LoadingSpinner, SearchBar } from '../common/ui';
-import { formatDateTime, normalizeText } from '@/common/utils';
+import { ErrorMessage, SearchBar } from '../common/ui';
+import { formatDate, normalizeText } from '@/common/utils';
 import './OutgoingDocumentsPage.css';
-import { Eye, Download, Funnel } from 'lucide-react';
+import { Eye, Download } from 'lucide-react';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import CustomSelect from '@/components/custom/CustomSelect';
+import FilterDialog from '@/components/filter/FilterDialog';
 
 const SEARCH_FIELDS = [
     { value: 'all', label: 'Tất cả' },
@@ -38,7 +41,6 @@ export default function OutgoingDocumentsPage() {
     } = useFileDownload();
     const [searchKeyword, setSearchKeyword] = useState('');
     const [searchField, setSearchField] = useState('all');
-    const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [filters, setFilters] = useState({
         department: 'all',
         year: 'all',
@@ -56,20 +58,17 @@ export default function OutgoingDocumentsPage() {
         [downloadOutgoingFile],
     );
 
-    const handleOpenFilters = () => {
+    const handleResetFilters = () => {
         setDraftFilters(filters);
-        setIsFilterOpen(true);
-        refetchDepartments();
     };
 
-    const handleCloseFilters = () => {
-        setIsFilterOpen(false);
-        setDraftFilters(filters);
+    const handleOpenFilters = () => {
+        handleResetFilters();
+        refetchDepartments();
     };
 
     const handleApplyFilters = () => {
         setFilters(draftFilters);
-        setIsFilterOpen(false);
     };
 
     const handleOutGoingDetail = id => navigate(`/outgoing-documents/${id}`);
@@ -154,14 +153,14 @@ export default function OutgoingDocumentsPage() {
         {
             key: 'CreatedDate',
             title: 'Ngày tạo',
-            render: row => formatDateTime(row.CreatedDate),
+            render: row => formatDate(row.CreatedDate),
         },
         { key: 'SignerFullname', title: 'Người ký' },
         { key: 'GroupName', title: 'Đơn vị ban hành' },
         {
             key: 'SignedDate',
             title: 'Ngày ký',
-            render: row => formatDateTime(row.SignedDate),
+            render: row => formatDate(row.SignedDate),
         },
         {
             key: 'actions',
@@ -200,14 +199,38 @@ export default function OutgoingDocumentsPage() {
         },
     ];
 
-    return (
-        <>
-            {isLoading ? (
-                <LoadingSpinner text='Đang tải văn bản đi...' />
-            ) : null}
+    const departmentOptions = useMemo(
+        () => [
+            { value: 'all', label: 'Tất cả đơn vị' },
+            ...departments.map(dept => ({
+                value: String(dept.GroupID),
+                label: dept.GroupName,
+            })),
+        ],
+        [departments],
+    );
+
+    const formattedYearOptions = useMemo(
+        () => [
+            { value: 'all', label: 'Tất cả năm' },
+            ...yearOptions.map(year => ({
+                value: String(year),
+                label: String(year),
+            })),
+        ],
+        [yearOptions],
+    );
+
+    if (error || departmentsError || downloadError) {
+        return (
             <ErrorMessage
                 message={error || departmentsError || downloadError}
             />
+        );
+    }
+
+    return (
+        <>
             <div className='outgoing-toolbar'>
                 <div className='outgoing-toolbar-left'>
                     <SearchBar
@@ -218,16 +241,38 @@ export default function OutgoingDocumentsPage() {
                         placeholder='Tìm kiếm văn bản...'
                         style={{ marginBottom: 0 }}
                     />
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button onClick={handleOpenFilters}>
-                                <Funnel size={12} />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side='bottom'>
-                            <p>Bộ lọc</p>
-                        </TooltipContent>
-                    </Tooltip>
+                    <FilterDialog
+                        handleFilters={handleApplyFilters}
+                        handleOpenFilters={handleOpenFilters}>
+                        <div className='grid gap-3'>
+                            <Label htmlFor='filter-department'>Đơn vị</Label>
+                            <CustomSelect
+                                id='filter-department'
+                                options={departmentOptions}
+                                onChange={newValue => {
+                                    setDraftFilters(prev => ({
+                                        ...prev,
+                                        department: newValue
+                                            ? newValue.value
+                                            : 'all',
+                                    }));
+                                }}
+                                value={draftFilters.department}
+                            />
+                            <Label htmlFor='filter-year'>Năm</Label>
+                            <CustomSelect
+                                id='filter-year'
+                                options={formattedYearOptions}
+                                onChange={newValue => {
+                                    setDraftFilters(prev => ({
+                                        ...prev,
+                                        year: newValue ? newValue.value : 'all',
+                                    }));
+                                }}
+                                value={String(draftFilters.year)}
+                            />
+                        </div>
+                    </FilterDialog>
                 </div>
                 <div className='filter-pill'>
                     Đơn vị:{' '}
@@ -247,7 +292,6 @@ export default function OutgoingDocumentsPage() {
                     </strong>
                 </div>
             </div>
-
             <CommonTable
                 columns={columns}
                 data={filteredDocuments}
@@ -263,77 +307,11 @@ export default function OutgoingDocumentsPage() {
                 searchable={false}
                 pagination
                 autoPageSize={false}
-                initialPageSize={15}
-                pageSizeOptions={[15]}
+                initialPageSize={20}
+                pageSizeOptions={[5, 15, 20]}
                 emptyText='Không có văn bản đi'
+                isLoading={isLoading}
             />
-            {isFilterOpen ? (
-                <div className='filter-overlay' onClick={handleCloseFilters}>
-                    <div
-                        className='filter-modal'
-                        onClick={event => event.stopPropagation()}>
-                        <div className='filter-header'>
-                            <h3>Bộ lọc dữ liệu</h3>
-                            <button
-                                type='button'
-                                className='filter-close'
-                                onClick={handleCloseFilters}>
-                                ×
-                            </button>
-                        </div>
-                        <div className='filter-grid'>
-                            <label htmlFor='filter-department'>
-                                Đơn vị
-                                <select
-                                    id='filter-department'
-                                    value={draftFilters.department}
-                                    onChange={event =>
-                                        setDraftFilters(prev => ({
-                                            ...prev,
-                                            department: event.target.value,
-                                        }))
-                                    }>
-                                    <option value='all'>Tất cả đơn vị</option>
-                                    {departments.map(department => (
-                                        <option
-                                            key={department.GroupID}
-                                            value={String(department.GroupID)}>
-                                            {department.GroupName}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-
-                            <label htmlFor='filter-year'>
-                                Năm
-                                <select
-                                    id='filter-year'
-                                    value={draftFilters.year}
-                                    onChange={event =>
-                                        setDraftFilters(prev => ({
-                                            ...prev,
-                                            year: event.target.value,
-                                        }))
-                                    }>
-                                    <option value='all'>Tất cả năm</option>
-                                    {yearOptions.map(year => (
-                                        <option key={year} value={year}>
-                                            {year}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                        </div>
-
-                        <div className='filter-actions'>
-                            <Button onClick={handleCloseFilters}>Hủy</Button>
-                            <Button onClick={handleApplyFilters}>
-                                Áp dụng
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
         </>
     );
 }

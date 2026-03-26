@@ -12,7 +12,8 @@ router.get('/', async (req, res) => {
         const userGroupId = req.headers['x-user-group-id'] || '';
         const groupIdNum = parseInt(userGroupId, 10);
         const isAdmin = userRole === 'admin';
-        const hasGroupFilter = !isAdmin && Number.isFinite(groupIdNum) && groupIdNum !== 0;
+        const hasGroupFilter =
+            !isAdmin && Number.isFinite(groupIdNum) && groupIdNum !== 0;
 
         const request = pool.request();
         let whereClause = '';
@@ -105,19 +106,59 @@ router.get('/:id', async (req, res) => {
         const { id } = req.params;
         const pool = database.getPool();
 
-        const result = await pool.request().input('id', sql.Int, id).query(`
-                SELECT
-                    doc.*,
-                    CASE
-                        WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.RecursiveGroupName, '')
-                        WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')
-                        ELSE ''
-                    END AS GroupName
-                FROM dbo.WF_Incoming_Docs doc
-                LEFT JOIN dbo.Core_Groups grp ON doc.AssignedGroupID > 0 AND grp.GroupID = doc.AssignedGroupID AND grp.IsView = 0 AND grp.IsShow = 1
-                LEFT JOIN dbo.Core_Portals portal ON doc.AssignedGroupID < 0 AND portal.PortalId = ABS(doc.AssignedGroupID)
-                WHERE doc.DocumentID = @id
-            `);
+        // const result = await pool.request().input('id', sql.Int, id).query(`
+        //         SELECT
+        //             doc.*,
+        //             CASE
+        //                 WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.RecursiveGroupName, '')
+        //                 WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')
+        //                 ELSE ''
+        //             END AS GroupName
+        //         FROM dbo.WF_Incoming_Docs doc
+        //         LEFT JOIN dbo.Core_Groups grp ON doc.AssignedGroupID > 0 AND grp.GroupID = doc.AssignedGroupID AND grp.IsView = 0 AND grp.IsShow = 1
+        //         LEFT JOIN dbo.Core_Portals portal ON doc.AssignedGroupID < 0 AND portal.PortalId = ABS(doc.AssignedGroupID)
+        //         WHERE doc.DocumentID = @id
+        //     `);
+
+        const numberId = Number(id);
+        if (!id || isNaN(numberId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID không hợp lệ',
+            });
+        }
+
+        const result = await pool.request().input('numberId', sql.Int, numberId)
+            .query(`
+            SELECT
+              doc.DocumentID,
+              doc.DocumentNo,
+              doc.ReceivedDate,
+              doc.DocumentSummary,
+              doc.issuedOrganizationName2,
+              COALESCE(grp.RecursiveGroupName, '') AS GroupName,
+              COALESCE(b.Name, '') AS BookName,
+              COALESCE(f.FileName, '') AS FileName,
+              COALESCE(o.Name, '') AS IssuedOrganizationName,
+              NULLIF(LTRIM(RTRIM(COALESCE(usr.Lastname, '') + ' ' + COALESCE(usr.FirstName, ''))), '') AS LeaderName,
+              NULLIF(LTRIM(RTRIM(COALESCE(usr1.Lastname, '') + ' ' + COALESCE(usr1.FirstName, ''))), '') AS AssignedUserName
+            FROM dbo.WF_Incoming_Docs doc
+            LEFT JOIN dbo.WF_Books b ON b.BookID = doc.BookID
+            LEFT JOIN dbo.WF_Organizations o ON o.OrganizationId = doc.IssuedOrganizationID
+            LEFT JOIN dbo.Core_Users usr ON usr.UserID = doc.AssignedReviewedUserID
+            LEFT JOIN dbo.Core_Users usr1 ON usr1.UserID = doc.AssignedUserID
+            LEFT JOIN (
+                SELECT DocumentID, FileName, FileID,
+                ROW_NUMBER() OVER (PARTITION BY DocumentID ORDER BY CreatedDate DESC) as rn
+                FROM dbo.WF_Incoming_Doc_Files
+            ) f ON f.DocumentID = doc.DocumentID AND f.rn = 1
+            LEFT JOIN dbo.Core_Groups grp ON grp.GroupID = ABS(doc.AssignedGroupID)
+                    AND grp.IsView = 0
+                    AND grp.IsShow = 1
+            WHERE doc.DocumentID = @numberId
+        `);
+
+        console.log(result.recordset[0]);
 
         if (result.recordset.length === 0) {
             return res.status(404).json({

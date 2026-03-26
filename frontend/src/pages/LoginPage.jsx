@@ -6,8 +6,8 @@ import { APP_ROUTES } from '../common/routing/routes';
 import Button from '../common/ui/Button';
 import ErrorMessage from '../common/ui/ErrorMessage';
 import Input from '../common/ui/Input';
-import LoadingSpinner from '../common/ui/LoadingSpinner';
 import { isRequired } from '../common/utils';
+import Spinner from '@/components/loading/Spinner';
 
 export default function LoginPage() {
     const navigate = useNavigate();
@@ -61,6 +61,10 @@ export default function LoginPage() {
         }
     };
 
+    if (error) {
+        return <ErrorMessage message={error} />;
+    }
+
     return (
         <div className='flex min-h-screen w-full items-center justify-center bg-linear-to-br from-blue-600 to-blue-900'>
             <form className='panel' onSubmit={handleSubmit}>
@@ -82,15 +86,11 @@ export default function LoginPage() {
                     placeholder='Nhập mật khẩu'
                     autoComplete='current-password'
                 />
-                <ErrorMessage message={error} />
-                {isSubmitting ? (
-                    <LoadingSpinner text='Đang đăng nhập...' />
-                ) : null}
                 <Button
                     type='submit'
                     disabled={isSubmitting}
-                    className='w-full'>
-                    Đăng nhập
+                    className='w-full flex items-center justify-center gap-2'>
+                    {isSubmitting && <Spinner />} Đăng nhập
                 </Button>
             </form>
         </div>

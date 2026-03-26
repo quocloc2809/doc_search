@@ -51,7 +51,7 @@ const Header = ({ backPath, isDetail = false }) => {
                     </div>
                 </div>
                 <DropdownMenu modal={false}>
-                    <DropdownMenuTrigger className='flex items-center gap-2 rounded-lg px-3 py-2.5'>
+                    <DropdownMenuTrigger className='flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer hover:opacity-90 transition'>
                         <div className='flex items-center gap-2 bg-white/15 rounded-full px-4 py-1.5'>
                             <div className='w-7 h-7 rounded-full bg-amber-400 flex items-center justify-center text-xs font-bold text-amber-900'>
                                 AT
