@@ -4,6 +4,13 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const database = require('../../../shared/config/database');
 const sql = database.sql;
+const audit = require('../../../shared/utils/auditLogger');
+const createLogger = require('../../../shared/utils/logger');
+const logger = createLogger('auth');
+
+function getClientIp(req) {
+    return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
+}
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_PRODUCTION = NODE_ENV === 'production';
@@ -58,6 +65,7 @@ router.post('/login', async (req, res) => {
             `);
 
         if (!result.recordset || result.recordset.length === 0) {
+            audit.log('LOGIN_FAILED', { username, ip: getClientIp(req), reason: 'user_not_found' });
             return res.status(401).json({
                 success: false,
                 message: 'Tên đăng nhập hoặc mật khẩu không đúng',
@@ -75,6 +83,7 @@ router.post('/login', async (req, res) => {
 
         const hashedPassword = hashPassword(password, user.Salt);
         if (hashedPassword !== user.PasswordHash) {
+            audit.log('LOGIN_FAILED', { username, ip: getClientIp(req), reason: 'wrong_password' });
             return res.status(401).json({
                 success: false,
                 message: 'Tên đăng nhập hoặc mật khẩu không đúng',
@@ -99,6 +108,7 @@ router.post('/login', async (req, res) => {
             { expiresIn: JWT_EXPIRES_IN },
         );
 
+        audit.log('LOGIN_SUCCESS', { userId: user.UserID, username: user.Username, ip: getClientIp(req) });
         res.json({
             success: true,
             message: 'Đăng nhập thành công',
@@ -115,7 +125,7 @@ router.post('/login', async (req, res) => {
             },
         });
     } catch (error) {
-        console.error('Lỗi đăng nhập:', error);
+        logger.error('Lỗi đăng nhập', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
@@ -185,7 +195,7 @@ router.post('/register', async (req, res) => {
             },
         });
     } catch (error) {
-        console.error('Lỗi tạo tài khoản:', error);
+        logger.error('Lỗi tạo tài khoản', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
@@ -240,7 +250,7 @@ router.get('/admin/users', requireAdmin, async (req, res) => {
         `);
         res.json({ success: true, data: result.recordset });
     } catch (error) {
-        console.error('Lỗi lấy danh sách tài khoản:', error);
+        logger.error('Lỗi lấy danh sách tài khoản', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
@@ -306,13 +316,14 @@ router.post('/admin/users', requireAdmin, async (req, res) => {
                 SELECT SCOPE_IDENTITY() AS UserID;
             `);
 
+        audit.log('ADMIN_CREATE_USER', { adminId: req.user.userId, adminUsername: req.user.username, targetUsername: username, ip: getClientIp(req) });
         res.status(201).json({
             success: true,
             message: 'Tạo tài khoản thành công',
             data: { userId: result.recordset[0].UserID, username, fullName },
         });
     } catch (error) {
-        console.error('Lỗi tạo tài khoản admin:', error);
+        logger.error('Lỗi tạo tài khoản admin', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
@@ -402,9 +413,10 @@ router.put('/admin/users/:id', requireAdmin, async (req, res) => {
                 `);
         }
 
+        audit.log('ADMIN_UPDATE_USER', { adminId: req.user.userId, adminUsername: req.user.username, targetUserId: userId, passwordChanged: !!newPassword, ip: getClientIp(req) });
         res.json({ success: true, message: 'Cập nhật tài khoản thành công' });
     } catch (error) {
-        console.error('Lỗi cập nhật tài khoản:', error);
+        logger.error('Lỗi cập nhật tài khoản', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
@@ -443,9 +455,10 @@ router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
                 .json({ success: false, message: 'Không tìm thấy tài khoản' });
         }
 
+        audit.log('ADMIN_DELETE_USER', { adminId: req.user.userId, adminUsername: req.user.username, targetUserId: userId, ip: getClientIp(req) });
         res.json({ success: true, message: 'Xoá tài khoản thành công' });
     } catch (error) {
-        console.error('Lỗi xoá tài khoản:', error);
+        logger.error('Lỗi xoá tài khoản', { error: error.message });
         // Foreign key / reference constraint
         if (
             error &&
@@ -524,12 +537,13 @@ router.post('/change-password', async (req, res) => {
                 WHERE UserID = @userId
             `);
 
+        audit.log('CHANGE_PASSWORD', { userId, ip: getClientIp(req) });
         res.json({
             success: true,
             message: 'Đổi mật khẩu thành công',
         });
     } catch (error) {
-        console.error('Lỗi đổi mật khẩu:', error);
+        logger.error('Lỗi đổi mật khẩu', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',

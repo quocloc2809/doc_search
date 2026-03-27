@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const database = require('../../../shared/config/database');
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const createLogger = require('../../../shared/utils/logger');
+const logger = createLogger('departments');
 
 router.get('/', async (req, res) => {
     try {
@@ -25,7 +27,7 @@ router.get('/', async (req, res) => {
             data: result.recordset
         });
     } catch (error) {
-        console.error('Lỗi lấy danh sách đơn vị:', error);
+        logger.error('Lỗi lấy danh sách đơn vị', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',

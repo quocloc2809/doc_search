@@ -3,6 +3,8 @@ const router = express.Router();
 const database = require('../../../shared/config/database');
 const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const createLogger = require('../../../shared/utils/logger');
+const logger = createLogger('documents');
 
 // Get all outgoing documents (similar structure to incoming documents)
 router.get('/', async (req, res) => {
@@ -51,7 +53,7 @@ router.get('/', async (req, res) => {
             data: result.recordset || [],
         });
     } catch (error) {
-        console.error('Lỗi lấy danh sách outgoing documents:', error);
+        logger.error('Lỗi lấy danh sách outgoing documents', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
@@ -108,7 +110,7 @@ router.get('/:id', async (req, res) => {
             data: result.recordset[0] || {},
         });
     } catch (error) {
-        console.error('Lỗi lấy chi tiết công văn đi:', error);
+        logger.error('Lỗi lấy chi tiết công văn đi', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
@@ -147,7 +149,7 @@ router.get('/search', async (req, res) => {
             data: result.recordset,
         });
     } catch (error) {
-        console.error('Lỗi tìm kiếm outgoing documents:', error);
+        logger.error('Lỗi tìm kiếm outgoing documents', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',

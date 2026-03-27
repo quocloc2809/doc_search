@@ -4,7 +4,9 @@
     "description": "Shared configuration and utilities for microservices",
     "private": true,
     "dependencies": {
+        "dotenv": "^16.3.1",
         "mssql": "^10.0.1",
-        "dotenv": "^16.3.1"
+        "winston": "^3.19.0",
+        "winston-daily-rotate-file": "^5.0.0"
     }
 }

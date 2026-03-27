@@ -3,6 +3,8 @@ const router = express.Router();
 const database = require('../../../shared/config/database');
 const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const createLogger = require('../../../shared/utils/logger');
+const logger = createLogger('documents');
 
 router.get('/', async (req, res) => {
     try {
@@ -84,7 +86,7 @@ router.get('/', async (req, res) => {
             },
         };
 
-        console.log('Computed incoming-documents stats:', statsObj);
+        logger.debug('Incoming documents stats', { stats: statsObj });
 
         res.json({
             success: true,
@@ -92,7 +94,7 @@ router.get('/', async (req, res) => {
             stats: statsObj,
         });
     } catch (error) {
-        console.error('Lỗi lấy danh sách công văn:', error);
+        logger.error('Lỗi lấy danh sách công văn', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',
@@ -138,7 +140,7 @@ router.get('/:id', async (req, res) => {
             WHERE doc.DocumentID = @id
         `);
 
-        console.log(result.recordset[0]);
+        logger.debug('Incoming document detail', { id, documentId: result.recordset[0]?.DocumentID });
 
         if (result.recordset.length === 0) {
             return res.status(404).json({
@@ -151,7 +153,7 @@ router.get('/:id', async (req, res) => {
             data: result.recordset[0],
         });
     } catch (error) {
-        console.error('Lỗi lấy chi tiết công văn đến:', error);
+        logger.error('Lỗi lấy chi tiết công văn đến', { error: error.message });
         res.status(500).json({
             success: false,
             message: 'Lỗi server',

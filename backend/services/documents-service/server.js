@@ -6,6 +6,8 @@ require('dotenv').config();
 const database = require('../../shared/config/database');
 const incomingDocumentsRoutes = require('./routes/incoming-documents');
 const outgoingDocumentsRoutes = require('./routes/outgoing-documents');
+const createLogger = require('../../shared/utils/logger');
+const logger = createLogger('documents');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -22,7 +24,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Logging middleware
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - [Documents Service] ${req.method} ${req.path}`);
+    logger.info(`${req.method} ${req.path}`, { ip: req.ip });
     next();
 });
 
@@ -53,7 +55,7 @@ app.use('/api/outgoing-documents', outgoingDocumentsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error('[Documents Service Error]:', err);
+    logger.error('Documents service internal error', { error: err.message, stack: err.stack });
     res.status(500).json({
         success: false,
         message: 'Documents service internal error',
@@ -74,23 +76,23 @@ async function startServer() {
     try {
         await database.connect();
         app.listen(PORT, () => {
-            console.log(`📄 Documents Service running at: http://localhost:${PORT}`);
+            logger.info(`Documents Service started on port ${PORT}`);
         });
     } catch (error) {
-        console.error('❌ Error starting documents service:', error);
+        logger.error('Error starting documents service', { error: error.message });
         process.exit(1);
     }
 }
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-    console.log('🔄 Shutting down documents service...');
+    logger.info('Shutting down documents service (SIGTERM)');
     await database.disconnect();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-    console.log('🔄 Shutting down documents service...');
+    logger.info('Shutting down documents service (SIGINT)');
     await database.disconnect();
     process.exit(0);
 });

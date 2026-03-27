@@ -4,6 +4,8 @@ require('dotenv').config();
 
 const database = require('../../shared/config/database');
 const authRoutes = require('./routes/auth');
+const createLogger = require('../../shared/utils/logger');
+const logger = createLogger('auth');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -20,7 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Logging middleware
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - [Auth Service] ${req.method} ${req.path}`);
+    logger.info(`${req.method} ${req.path}`, { ip: req.ip });
     next();
 });
 
@@ -50,7 +52,7 @@ app.use('/api/auth', authRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error('[Auth Service Error]:', err);
+    logger.error('Auth service internal error', { error: err.message, stack: err.stack });
     res.status(500).json({
         success: false,
         message: 'Auth service internal error',
@@ -71,23 +73,23 @@ async function startServer() {
     try {
         await database.connect();
         app.listen(PORT, () => {
-            console.log(`🔐 Auth Service running at: http://localhost:${PORT}`);
+            logger.info(`Auth Service started on port ${PORT}`);
         });
     } catch (error) {
-        console.error('❌ Error starting auth service:', error);
+        logger.error('Error starting auth service', { error: error.message });
         process.exit(1);
     }
 }
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-    console.log('🔄 Shutting down auth service...');
+    logger.info('Shutting down auth service (SIGTERM)');
     await database.disconnect();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-    console.log('🔄 Shutting down auth service...');
+    logger.info('Shutting down auth service (SIGINT)');
     await database.disconnect();
     process.exit(0);
 });

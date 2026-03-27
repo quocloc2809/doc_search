@@ -5,6 +5,8 @@ require('dotenv').config();
 
 const database = require('../../shared/config/database');
 const departmentsRoutes = require('./routes/departments');
+const createLogger = require('../../shared/utils/logger');
+const logger = createLogger('departments');
 
 const app = express();
 const PORT = process.env.PORT || 3004;
@@ -21,7 +23,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Logging middleware
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - [Departments Service] ${req.method} ${req.path}`);
+    logger.info(`${req.method} ${req.path}`, { ip: req.ip });
     next();
 });
 
@@ -51,7 +53,7 @@ app.use('/api/departments', departmentsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error('[Departments Service Error]:', err);
+    logger.error('Departments service internal error', { error: err.message, stack: err.stack });
     res.status(500).json({
         success: false,
         message: 'Departments service internal error',
@@ -72,23 +74,23 @@ async function startServer() {
     try {
         await database.connect();
         app.listen(PORT, () => {
-            console.log(`🏢 Departments Service running at: http://localhost:${PORT}`);
+            logger.info(`Departments Service started on port ${PORT}`);
         });
     } catch (error) {
-        console.error('❌ Error starting departments service:', error);
+        logger.error('Error starting departments service', { error: error.message });
         process.exit(1);
     }
 }
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-    console.log('🔄 Shutting down departments service...');
+    logger.info('Shutting down departments service (SIGTERM)');
     await database.disconnect();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-    console.log('🔄 Shutting down departments service...');
+    logger.info('Shutting down departments service (SIGINT)');
     await database.disconnect();
     process.exit(0);
 });

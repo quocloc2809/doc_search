@@ -7,6 +7,8 @@ require('dotenv').config();
 
 const database = require('../../shared/config/database');
 const filesRoutes = require('./routes/files');
+const createLogger = require('../../shared/utils/logger');
+const logger = createLogger('files');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -24,7 +26,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Logging middleware
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - [Files Service] ${req.method} ${req.path}`);
+    logger.info(`${req.method} ${req.path}`, { ip: req.ip });
     next();
 });
 
@@ -54,7 +56,7 @@ app.use('/api/files', filesRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error('[Files Service Error]:', err);
+    logger.error('Files service internal error', { error: err.message, stack: err.stack });
     res.status(500).json({
         success: false,
         message: 'Files service internal error',
@@ -75,23 +77,23 @@ async function startServer() {
     try {
         await database.connect();
         app.listen(PORT, () => {
-            console.log(`📁 Files Service running at: http://localhost:${PORT}`);
+            logger.info(`Files Service started on port ${PORT}`);
         });
     } catch (error) {
-        console.error('❌ Error starting files service:', error);
+        logger.error('Error starting files service', { error: error.message });
         process.exit(1);
     }
 }
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-    console.log('🔄 Shutting down files service...');
+    logger.info('Shutting down files service (SIGTERM)');
     await database.disconnect();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-    console.log('🔄 Shutting down files service...');
+    logger.info('Shutting down files service (SIGINT)');
     await database.disconnect();
     process.exit(0);
 });

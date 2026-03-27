@@ -6,6 +6,8 @@ const compression = require('compression');
 const jwt = require('jsonwebtoken');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 require('dotenv').config();
+const createLogger = require('../shared/utils/logger');
+const logger = createLogger('api-gateway');
 
 const app = express();
 const PORT = process.env.GATEWAY_PORT || 3001;
@@ -92,7 +94,7 @@ function verifyAccessToken(req, res, next) {
 
 // Logging middleware
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - [Gateway] ${req.method} ${req.path}`);
+    logger.info(`${req.method} ${req.path}`, { ip: req.ip });
     next();
 });
 
@@ -135,7 +137,7 @@ const proxyOptions = {
     changeOrigin: true,
     logLevel: IS_PRODUCTION ? 'warn' : 'debug',
     onProxyReq: (proxyReq, req, res) => {
-        console.log(`[Proxy] ${req.method} ${req.path} -> ${proxyReq.path}`);
+        logger.debug(`Proxy ${req.method} ${req.path} -> ${proxyReq.path}`);
 
         // Re-send body for POST/PUT requests
         if (req.body && (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH')) {
@@ -147,7 +149,7 @@ const proxyOptions = {
         }
     },
     onError: (err, req, res) => {
-        console.error(`[Proxy Error] ${req.method} ${req.path}:`, err.message);
+        logger.error(`Proxy error ${req.method} ${req.path}`, { error: err.message });
         res.status(502).json({
             success: false,
             message: 'Service unavailable',
@@ -195,7 +197,7 @@ app.use('*', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error('[Gateway Error]:', err);
+    logger.error('Gateway internal error', { error: err.message, stack: err.stack });
     res.status(500).json({
         success: false,
         message: 'Gateway internal error',
@@ -205,21 +207,20 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`🚀 API Gateway running at: http://localhost:${PORT}`);
-    console.log(`🔒 Auth required for business APIs: ${REQUIRE_AUTH ? 'enabled' : 'disabled'}`);
-    console.log(`📋 Services:`);
+    logger.info(`API Gateway started on port ${PORT}`);
+    logger.info(`Auth required: ${REQUIRE_AUTH}`);
     Object.entries(SERVICES).forEach(([name, url]) => {
-        console.log(`   - ${name}: ${url}`);
+        logger.info(`Service ${name}: ${url}`);
     });
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-    console.log('🔄 Shutting down API Gateway...');
+    logger.info('Shutting down API Gateway (SIGTERM)');
     process.exit(0);
 });
 
 process.on('SIGINT', () => {
-    console.log('🔄 Shutting down API Gateway...');
+    logger.info('Shutting down API Gateway (SIGINT)');
     process.exit(0);
 });

@@ -5,6 +5,13 @@ const fs = require('fs');
 const database = require('../../../shared/config/database');
 const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const createLogger = require('../../../shared/utils/logger');
+const audit = require('../../../shared/utils/auditLogger');
+const logger = createLogger('files');
+
+function getClientIp(req) {
+    return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
+}
 
 // Download file cho Incoming Documents
 router.get('/download/incoming/:documentId', async (req, res) => {
@@ -16,7 +23,7 @@ router.get('/download/incoming/:documentId', async (req, res) => {
 
         const pool = database.getPool();
         
-        console.log('🔍 [Download Incoming] DocumentID:', documentId);
+        logger.debug('Download incoming request', { documentId });
         
         const result = await pool.request()
             .input('docId', documentId)
@@ -30,7 +37,7 @@ router.get('/download/incoming/:documentId', async (req, res) => {
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 
-        console.log('📁 [Download Incoming] FileName from DB:', filePath);
+        logger.debug('Incoming file from DB', { filePath });
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
@@ -38,17 +45,15 @@ router.get('/download/incoming/:documentId', async (req, res) => {
         let relativePath = filePath.replace(/^[\/\\]/, '');
         const fullPath = path.resolve(storageRoot, relativePath);
         
-        console.log('📂 Storage Root:', storageRoot);
-        console.log('📂 Full Path:', fullPath);
+        logger.debug('Resolved path', { storageRoot, fullPath });
 
-        // Kiểm tra security: file phải nằm trong storage root
         if (!fullPath.startsWith(path.resolve(storageRoot))) {
-            console.warn('Attempt to access file outside storage root:', fullPath);
+            logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }
 
         if (!fs.existsSync(fullPath)) {
-            console.warn('Requested file not found on disk:', fullPath);
+            logger.warn('File not found on disk', { fullPath });
             return res.status(404).json({ success: false, message: 'File not found on server' });
         }
 
@@ -58,22 +63,27 @@ router.get('/download/incoming/:documentId', async (req, res) => {
             ? baseName.substring(baseName.lastIndexOf('-') + 1) 
             : baseName;
         
-        console.log('📄 Base Name:', baseName);
-        console.log('📄 Original File Name:', originalFileName);
+        logger.debug('Serving file', { baseName, originalFileName });
         
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(originalFileName)}"`);
 
         const stream = fs.createReadStream(fullPath);
+        audit.log('DOWNLOAD_INCOMING_FILE', {
+            userId: req.headers['x-user-id'] || null,
+            documentId,
+            fileName: originalFileName,
+            ip: getClientIp(req),
+        });
         stream.pipe(res);
         stream.on('error', (err) => {
-            console.error('File stream error:', err);
+            logger.error('File stream error (incoming)', { error: err.message, fullPath });
             if (!res.headersSent) {
                 res.status(500).json({ success: false, message: 'Error streaming file' });
             }
         });
     } catch (error) {
-        console.error('Error in incoming file download route:', error);
+        logger.error('Error in incoming file download route', { error: error.message });
         res.status(500).json({ success: false, message: 'Server error', error: IS_PRODUCTION ? 'Internal server error' : error.message });
     }
 });
@@ -88,7 +98,7 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
 
         const pool = database.getPool();
         
-        console.log('🔍 [Download Outgoing] DocumentID:', documentId);
+        logger.debug('Download outgoing request', { documentId });
         
         const result = await pool.request()
             .input('docId', documentId)
@@ -102,7 +112,7 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 
-        console.log('📁 [Download Outgoing] FileName from DB:', filePath);
+        logger.debug('Outgoing file from DB', { filePath });
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
@@ -110,17 +120,16 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
         let relativePath = filePath.replace(/^[\/\\]/, '');
         const fullPath = path.resolve(storageRoot, relativePath);
         
-        console.log('📂 Storage Root:', storageRoot);
-        console.log('📂 Full Path:', fullPath);
+        logger.debug('Resolved path', { storageRoot, fullPath });
 
         // Kiểm tra security: file phải nằm trong storage root
         if (!fullPath.startsWith(path.resolve(storageRoot))) {
-            console.warn('Attempt to access file outside storage root:', fullPath);
+            logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }
 
         if (!fs.existsSync(fullPath)) {
-            console.warn('Requested file not found on disk:', fullPath);
+            logger.warn('File not found on disk', { fullPath });
             return res.status(404).json({ success: false, message: 'File not found on server' });
         }
 
@@ -130,22 +139,27 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
             ? baseName.substring(baseName.lastIndexOf('-') + 1) 
             : baseName;
         
-        console.log('📄 Base Name:', baseName);
-        console.log('📄 Original File Name:', originalFileName);
+        logger.debug('Serving file', { baseName, originalFileName });
         
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(originalFileName)}"`);
 
         const stream = fs.createReadStream(fullPath);
+        audit.log('DOWNLOAD_OUTGOING_FILE', {
+            userId: req.headers['x-user-id'] || null,
+            documentId,
+            fileName: originalFileName,
+            ip: getClientIp(req),
+        });
         stream.pipe(res);
         stream.on('error', (err) => {
-            console.error('File stream error:', err);
+            logger.error('File stream error (outgoing)', { error: err.message, fullPath });
             if (!res.headersSent) {
                 res.status(500).json({ success: false, message: 'Error streaming file' });
             }
         });
     } catch (error) {
-        console.error('Error in outgoing file download route:', error);
+        logger.error('Error in outgoing file download route', { error: error.message });
         res.status(500).json({ success: false, message: 'Server error', error: IS_PRODUCTION ? 'Internal server error' : error.message });
     }
 });
@@ -160,7 +174,7 @@ router.get('/download/:documentId', async (req, res) => {
 
         const pool = database.getPool();
         
-        console.log('🔍 [Download Legacy] DocumentID:', documentId);
+        logger.debug('Download legacy request', { documentId });
         
         const result = await pool.request()
             .input('docId', documentId)
@@ -174,23 +188,22 @@ router.get('/download/:documentId', async (req, res) => {
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 
-        console.log('📁 [Download Legacy] FileName from DB:', filePath);
+        logger.debug('Legacy file from DB', { filePath });
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
         let relativePath = filePath.replace(/^[\/\\]/, '');
         const fullPath = path.resolve(storageRoot, relativePath);
         
-        console.log('📂 Storage Root:', storageRoot);
-        console.log('📂 Full Path:', fullPath);
+        logger.debug('Resolved path', { storageRoot, fullPath });
 
         if (!fullPath.startsWith(path.resolve(storageRoot))) {
-            console.warn('Attempt to access file outside storage root:', fullPath);
+            logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }
 
         if (!fs.existsSync(fullPath)) {
-            console.warn('Requested file not found on disk:', fullPath);
+            logger.warn('File not found on disk', { fullPath });
             return res.status(404).json({ success: false, message: 'File not found on server' });
         }
 
@@ -200,22 +213,27 @@ router.get('/download/:documentId', async (req, res) => {
             ? baseName.substring(baseName.lastIndexOf('-') + 1) 
             : baseName;
         
-        console.log('📄 Base Name:', baseName);
-        console.log('📄 Original File Name:', originalFileName);
+        logger.debug('Serving file', { baseName, originalFileName });
         
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(originalFileName)}"`);
 
         const stream = fs.createReadStream(fullPath);
+        audit.log('DOWNLOAD_INCOMING_FILE', {
+            userId: req.headers['x-user-id'] || null,
+            documentId,
+            fileName: originalFileName,
+            ip: getClientIp(req),
+        });
         stream.pipe(res);
         stream.on('error', (err) => {
-            console.error('File stream error:', err);
+            logger.error('File stream error (legacy)', { error: err.message, fullPath });
             if (!res.headersSent) {
                 res.status(500).json({ success: false, message: 'Error streaming file' });
             }
         });
     } catch (error) {
-        console.error('Error in file download route:', error);
+        logger.error('Error in file download route', { error: error.message });
         res.status(500).json({ success: false, message: 'Server error', error: IS_PRODUCTION ? 'Internal server error' : error.message });
     }
 });
