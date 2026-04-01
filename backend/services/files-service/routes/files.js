@@ -15,6 +15,10 @@ function toSafeRelativePath(filePath) {
     // Normalize separators and remove any leading slashes/backslashes so the path
     // cannot become drive-root absolute on Windows (e.g. "\\incoming\\a.pdf").
     let cleaned = filePath.trim();
+    // Convert both Windows and POSIX separators to the current OS separator.
+    // This is important when paths are stored with backslashes but the service
+    // runs on Linux (where backslash is a valid filename character, not a separator).
+    cleaned = cleaned.replace(/[\\/]+/g, path.sep);
     cleaned = cleaned.replace(/^([\\/])+/, '');
     cleaned = path.normalize(cleaned);
     cleaned = cleaned.replace(/^([\\/])+/, '');
