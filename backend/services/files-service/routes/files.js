@@ -9,6 +9,30 @@ const createLogger = require('../../../shared/utils/logger');
 const audit = require('../../../shared/utils/auditLogger');
 const logger = createLogger('files');
 
+function toSafeRelativePath(filePath) {
+    if (!filePath || typeof filePath !== 'string') return '';
+
+    // Normalize separators and remove any leading slashes/backslashes so the path
+    // cannot become drive-root absolute on Windows (e.g. "\\incoming\\a.pdf").
+    let cleaned = filePath.trim();
+    cleaned = cleaned.replace(/^([\\/])+/, '');
+    cleaned = path.normalize(cleaned);
+    cleaned = cleaned.replace(/^([\\/])+/, '');
+
+    // Reject obvious absolute drive paths that might have been stored in DB.
+    if (/^[A-Za-z]:/.test(cleaned)) {
+        throw new Error('Absolute file paths are not allowed');
+    }
+
+    return cleaned;
+}
+
+function isPathInsideRoot(rootPath, candidatePath) {
+    const rootResolved = path.resolve(rootPath);
+    const candidateResolved = path.resolve(candidatePath);
+    return candidateResolved === rootResolved || candidateResolved.startsWith(rootResolved + path.sep);
+}
+
 function getClientIp(req) {
     return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
 }
@@ -41,13 +65,18 @@ router.get('/download/incoming/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        // Xử lý path: bỏ / hoặc \ đầu tiên nếu có
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        let relativePath;
+        try {
+            relativePath = toSafeRelativePath(filePath);
+        } catch (e) {
+            logger.warn('Invalid file path from DB (incoming)', { filePath, error: e.message });
+            return res.status(400).json({ success: false, message: 'Invalid file path' });
+        }
         const fullPath = path.resolve(storageRoot, relativePath);
         
         logger.debug('Resolved path', { storageRoot, fullPath });
 
-        if (!fullPath.startsWith(path.resolve(storageRoot))) {
+        if (!isPathInsideRoot(storageRoot, fullPath)) {
             logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }
@@ -116,14 +145,19 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        // Xử lý path: bỏ / hoặc \ đầu tiên nếu có
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        let relativePath;
+        try {
+            relativePath = toSafeRelativePath(filePath);
+        } catch (e) {
+            logger.warn('Invalid file path from DB (outgoing)', { filePath, error: e.message });
+            return res.status(400).json({ success: false, message: 'Invalid file path' });
+        }
         const fullPath = path.resolve(storageRoot, relativePath);
         
         logger.debug('Resolved path', { storageRoot, fullPath });
 
         // Kiểm tra security: file phải nằm trong storage root
-        if (!fullPath.startsWith(path.resolve(storageRoot))) {
+        if (!isPathInsideRoot(storageRoot, fullPath)) {
             logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }
@@ -192,12 +226,18 @@ router.get('/download/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        let relativePath;
+        try {
+            relativePath = toSafeRelativePath(filePath);
+        } catch (e) {
+            logger.warn('Invalid file path from DB (legacy)', { filePath, error: e.message });
+            return res.status(400).json({ success: false, message: 'Invalid file path' });
+        }
         const fullPath = path.resolve(storageRoot, relativePath);
         
         logger.debug('Resolved path', { storageRoot, fullPath });
 
-        if (!fullPath.startsWith(path.resolve(storageRoot))) {
+        if (!isPathInsideRoot(storageRoot, fullPath)) {
             logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }
