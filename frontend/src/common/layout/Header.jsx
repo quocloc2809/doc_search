@@ -13,8 +13,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
+import { getCurrentUser } from '@/common/auth/storage';
 
-const Header = ({ backPath, isDetail = false }) => {
+const Header = ({ backPath, title }) => {
+    const currentUser = getCurrentUser();
+
     const navigate = useNavigate();
     const user = getAuthUser();
     const isAdmin = user?.role === 'admin';
@@ -23,6 +26,10 @@ const Header = ({ backPath, isDetail = false }) => {
         navigate(APP_ROUTES.LOGIN, {
             replace: true,
         });
+    };
+
+    const handleAdmin = () => {
+        navigate(APP_ROUTES.ADMIN);
     };
 
     const handleBack = () => {
@@ -47,19 +54,17 @@ const Header = ({ backPath, isDetail = false }) => {
                         </>
                     )}
                     <div className='text-white/70 text-xs uppercase tracking-widest'>
-                        <span>
-                            {isDetail ? 'Chi tiết' : 'Danh sách'} văn bản
-                        </span>
+                        <span>{title}</span>
                     </div>
                 </div>
                 <DropdownMenu modal={false}>
                     <DropdownMenuTrigger className='flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer hover:opacity-90 transition'>
                         <div className='flex items-center gap-2 bg-white/15 rounded-full px-4 py-1.5'>
                             <div className='w-7 h-7 rounded-full bg-amber-400 flex items-center justify-center text-xs font-bold text-amber-900'>
-                                AT
+                                {currentUser?.fullName?.charAt(0).toUpperCase()}
                             </div>
                             <span className='text-white text-sm font-medium'>
-                                Admin
+                                {currentUser?.fullName}
                             </span>
                         </div>
                     </DropdownMenuTrigger>
@@ -69,26 +74,28 @@ const Header = ({ backPath, isDetail = false }) => {
                                 <Avatar className=''>
                                     <AvatarImage src={''} alt={'avatar'} />
                                     <AvatarFallback className='bg-amber-400 text-amber-900 text-xs font-bold'>
-                                        AT
+                                        {currentUser?.fullName
+                                            ?.charAt(0)
+                                            .toUpperCase()}
                                     </AvatarFallback>
                                 </Avatar>
                                 <div className='grid flex-1 text-left text-sm leading-tight'>
                                     <span className='truncate font-medium text-black text-sm'>
-                                        Admin
+                                        {currentUser?.fullName}
                                     </span>
                                 </div>
                             </div>
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuGroup>
-                            {isAdmin && (
+                        {isAdmin && (
+                            <DropdownMenuGroup>
                                 <DropdownMenuItem
-                                    onClick={() => navigate(APP_ROUTES.ADMIN)}
+                                    onClick={handleAdmin}
                                     className='cursor-pointer'>
                                     Quản trị
                                 </DropdownMenuItem>
-                            )}
-                        </DropdownMenuGroup>
+                            </DropdownMenuGroup>
+                        )}
                         <DropdownMenuGroup>
                             <DropdownMenuItem
                                 onClick={handleLogout}

@@ -8,7 +8,7 @@ const DocumentLayout = () => {
 
     return (
         <div>
-            <Header />
+            <Header title={'Danh sách văn bản'} />
             <div className='page-wrapper page-wrapper-top'>
                 <div className='panel panel-wide panel-full-height'>
                     <Tabs value={location.pathname} className='w-full mb-4'>
