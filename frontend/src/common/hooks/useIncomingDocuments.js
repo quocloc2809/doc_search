@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { documentsApi } from '../api'
 
 export function useIncomingDocuments(initialParams = {}, { autoLoad = true } = {}) {
@@ -8,17 +8,24 @@ export function useIncomingDocuments(initialParams = {}, { autoLoad = true } = {
   const [isUpdating, setIsUpdating] = useState(false)
   const [error, setError] = useState('')
   const [params, setParams] = useState(initialParams)
+  const latestRequestRef = useRef(0)
 
   const stableParams = useMemo(() => params || {}, [params])
 
   const fetchIncomingDocuments = useCallback(async (overrideParams) => {
     const requestParams = overrideParams || stableParams
+    const requestId = ++latestRequestRef.current
 
     setIsLoading(true)
     setError('')
 
     try {
       const result = await documentsApi.getIncomingDocuments(requestParams)
+
+      if (requestId !== latestRequestRef.current) {
+        return
+      }
+
       if (result?.success) {
         setDocuments(result.data || [])
         setStats(result.stats || null)
@@ -28,11 +35,16 @@ export function useIncomingDocuments(initialParams = {}, { autoLoad = true } = {
         setError(result?.message || 'Không thể tải danh sách văn bản đến')
       }
     } catch (apiError) {
+      if (requestId !== latestRequestRef.current) {
+        return
+      }
       setDocuments([])
       setStats(null)
       setError(apiError?.response?.data?.message || 'Không thể kết nối máy chủ')
     } finally {
-      setIsLoading(false)
+      if (requestId === latestRequestRef.current) {
+        setIsLoading(false)
+      }
     }
   }, [stableParams])
 

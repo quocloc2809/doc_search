@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     useDepartments,
     useFileDownload,
     useIncomingDocuments,
+    useAvailableDocumentYears,
 } from '../common/hooks';
 import { CommonTable } from '../common/table';
 import { ErrorMessage, SearchBar } from '../common/ui';
@@ -28,7 +29,13 @@ const SEARCH_FIELDS = [
 
 export default function IncomingDocumentsPage() {
     const navigate = useNavigate();
-    const { documents, isLoading, error } = useIncomingDocuments();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlYear = searchParams.get('year');
+    const initialYear = urlYear && /^\d{4}$/.test(urlYear) ? urlYear : null;
+    const { documents, isLoading, error, setParams } = useIncomingDocuments(
+        initialYear ? { year: initialYear } : {},
+    );
+    const { years: availableYears } = useAvailableDocumentYears();
     const {
         departments,
         error: departmentsError,
@@ -41,16 +48,16 @@ export default function IncomingDocumentsPage() {
     } = useFileDownload();
     const [searchKeyword, setSearchKeyword] = useState('');
     const [searchField, setSearchField] = useState('all');
-    const [filters, setFilters] = useState({
+    const [filters, setFilters] = useState(() => ({
         department: 'all',
-        year: 'all',
-    });
+        year: initialYear || 'all',
+    }));
     const [draftFilters, setDraftFilters] = useState(filters);
 
     const handleDownload = useCallback(
-        async documentId => {
+        async (documentId, sourceDb) => {
             try {
-                await downloadIncomingFile(documentId);
+                await downloadIncomingFile(documentId, sourceDb);
             } catch {
                 return null;
             }
@@ -71,20 +78,80 @@ export default function IncomingDocumentsPage() {
         setFilters(draftFilters);
     };
 
-    const handleIncomingDetail = id => navigate(`/incoming-documents/${id}`);
+    // Keep year filter in URL so navigating to detail and back won't reset.
+    // Also send year to backend for server-side filtering + selecting correct DB.
+    useEffect(() => {
+        const next = new URLSearchParams(searchParams);
+        let changed = false;
+
+        if (filters.year === 'all') {
+            if (next.has('year')) {
+                next.delete('year');
+                changed = true;
+            }
+        } else if (next.get('year') !== filters.year) {
+            next.set('year', filters.year);
+            changed = true;
+        }
+
+        // `db` is only meaningful on the detail route; keep list URL clean.
+        if (next.has('db')) {
+            next.delete('db');
+            changed = true;
+        }
+
+        if (changed) {
+            setSearchParams(next, { replace: true });
+        }
+
+        setParams(prev => {
+            const prevYear = prev?.year;
+
+            if (filters.year === 'all') {
+                return prevYear ? {} : prev || {};
+            }
+
+            return prevYear === filters.year ? prev : { year: filters.year };
+        });
+    }, [filters.year, searchParams, setSearchParams, setParams]);
+
+    const handleIncomingDetail = (id, sourceDb) => {
+        const next = new URLSearchParams(searchParams);
+        if (filters.year === 'all') next.delete('year');
+        else next.set('year', filters.year);
+        // If year is not selected, pass db so the backend can find the record.
+        if (filters.year === 'all' && sourceDb) {
+            next.set('db', sourceDb);
+        } else {
+            next.delete('db');
+        }
+
+        navigate(`/incoming-documents/${id}?${next.toString()}`);
+    };
 
     const yearOptions = useMemo(() => {
-        const yearSet = new Set();
+        const configuredYearsRaw = import.meta?.env?.VITE_DOC_YEARS;
+        if (configuredYearsRaw) {
+            return String(configuredYearsRaw)
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean)
+                .filter(y => /^\d{4}$/.test(y))
+                .sort((a, b) => Number(b) - Number(a));
+        }
 
-        documents.forEach(row => {
-            const date = new Date(row?.CreatedDate);
-            if (!Number.isNaN(date.getTime())) {
-                yearSet.add(String(date.getFullYear()));
-            }
-        });
+        if (availableYears && availableYears.length > 0) {
+            return availableYears;
+        }
 
-        return [...yearSet].sort((a, b) => Number(b) - Number(a));
-    }, [documents]);
+        const currentYear = new Date().getFullYear();
+        const startYear = 2020;
+        const years = [];
+        for (let y = currentYear; y >= startYear; y -= 1) {
+            years.push(String(y));
+        }
+        return years;
+    }, [availableYears]);
 
     const filteredDocuments = useMemo(() => {
         const keyword = normalizeText(searchKeyword).toLowerCase();
@@ -139,7 +206,7 @@ export default function IncomingDocumentsPage() {
             render: row => (
                 <p
                     className='font-semibold hover:cursor-pointer hover:underline'
-                    onClick={() => handleIncomingDetail(row.DocumentID)}>
+                    onClick={() => handleIncomingDetail(row.DocumentID, row.SourceDb)}>
                     {row.DocumentNo}
                 </p>
             ),
@@ -168,7 +235,7 @@ export default function IncomingDocumentsPage() {
                         <TooltipTrigger asChild>
                             <Button
                                 onClick={() =>
-                                    handleIncomingDetail(row.DocumentID)
+                                    handleIncomingDetail(row.DocumentID, row.SourceDb)
                                 }>
                                 <Eye size={12} />
                             </Button>
@@ -181,7 +248,7 @@ export default function IncomingDocumentsPage() {
                         <TooltipTrigger asChild>
                             <Button
                                 disabled={isDownloading}
-                                onClick={() => handleDownload(row.DocumentID)}>
+                                onClick={() => handleDownload(row.DocumentID, row.SourceDb)}>
                                 <Download size={12} />
                             </Button>
                         </TooltipTrigger>

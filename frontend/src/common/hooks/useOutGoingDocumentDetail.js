@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { documentsApi } from '../api';
 
-export function useOutgoingDocumentDetail(id, { autoLoad = true } = {}) {
+export function useOutgoingDocumentDetail(id, params = {}, { autoLoad = true } = {}) {
     const [document, setDocument] = useState({});
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -11,7 +11,7 @@ export function useOutgoingDocumentDetail(id, { autoLoad = true } = {}) {
         setError('');
 
         try {
-            const result = await documentsApi.getOutgoingDocumentById(id);
+            const result = await documentsApi.getOutgoingDocumentByIdWithParams(id, params);
             if (result?.success) {
                 setDocument(result.data || {});
             } else {
@@ -29,7 +29,7 @@ export function useOutgoingDocumentDetail(id, { autoLoad = true } = {}) {
         } finally {
             setIsLoading(false);
         }
-    }, [id]);
+    }, [id, params]);
 
     useEffect(() => {
         if (autoLoad) {

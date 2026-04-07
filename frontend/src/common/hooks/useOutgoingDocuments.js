@@ -1,17 +1,29 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { documentsApi } from '../api'
 
-export function useOutgoingDocuments({ autoLoad = true } = {}) {
+export function useOutgoingDocuments(initialParams = {}, { autoLoad = true } = {}) {
   const [documents, setDocuments] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [params, setParams] = useState(initialParams)
+  const latestRequestRef = useRef(0)
 
-  const fetchOutgoingDocuments = useCallback(async () => {
+  const stableParams = useMemo(() => params || {}, [params])
+
+  const fetchOutgoingDocuments = useCallback(async (overrideParams) => {
+    const requestParams = overrideParams || stableParams
+    const requestId = ++latestRequestRef.current
+
     setIsLoading(true)
     setError('')
 
     try {
-      const result = await documentsApi.getOutgoingDocuments()
+      const result = await documentsApi.getOutgoingDocuments(requestParams)
+
+      if (requestId !== latestRequestRef.current) {
+        return
+      }
+
       if (result?.success) {
         setDocuments(result.data || [])
       } else {
@@ -19,12 +31,17 @@ export function useOutgoingDocuments({ autoLoad = true } = {}) {
         setError(result?.message || 'Không thể tải danh sách văn bản đi')
       }
     } catch (apiError) {
+      if (requestId !== latestRequestRef.current) {
+        return
+      }
       setDocuments([])
       setError(apiError?.response?.data?.message || 'Không thể kết nối máy chủ')
     } finally {
-      setIsLoading(false)
+      if (requestId === latestRequestRef.current) {
+        setIsLoading(false)
+      }
     }
-  }, [])
+  }, [stableParams])
 
   useEffect(() => {
     if (autoLoad) {
@@ -36,6 +53,8 @@ export function useOutgoingDocuments({ autoLoad = true } = {}) {
     documents,
     isLoading,
     error,
+    params: stableParams,
+    setParams,
     refetch: fetchOutgoingDocuments,
   }
 }

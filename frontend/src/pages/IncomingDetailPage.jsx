@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
     Breadcrumb,
     BreadcrumbItem,
@@ -20,7 +20,27 @@ import { Separator } from '@/components/ui/separator';
 
 function IncomingDetailPage() {
     const { id } = useParams();
-    const { document, isLoading, error } = useIncomingDocumentDetail(id);
+    const [searchParams] = useSearchParams();
+    const year = searchParams.get('year');
+    const db = searchParams.get('db');
+    const detailParams = useMemo(() => {
+        const params = {};
+        if (year && /^\d{4}$/.test(year)) params.year = year;
+        if (db) params.db = db;
+        return params;
+    }, [year, db]);
+
+    const { document, isLoading, error } = useIncomingDocumentDetail(
+        id,
+        detailParams,
+    );
+
+    const backPath = useMemo(() => {
+        if (year && /^\d{4}$/.test(year)) {
+            return `${APP_ROUTES.INCOMING_DOCUMENTS}?year=${year}`;
+        }
+        return APP_ROUTES.INCOMING_DOCUMENTS;
+    }, [year]);
 
     const infoFields = useMemo(
         () => [
@@ -55,14 +75,14 @@ function IncomingDetailPage() {
 
     return (
         <div className='min-h-dvh-screen bg-slate-100 font-sans'>
-            <Header backPath={APP_ROUTES.INCOMING_DOCUMENTS} isDetail />
+            <Header backPath={backPath} isDetail />
             <div className='bg-white border-b border-gray-200'>
                 <div className='max-w-7xl mx-auto px-8 py-2.5 flex gap-2 items-center text-xs text-gray-500'>
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem>
                                 <BreadcrumbLink asChild>
-                                    <Link to='/incoming-documents'>
+                                    <Link to={backPath}>
                                         Văn bản đến
                                     </Link>
                                 </BreadcrumbLink>

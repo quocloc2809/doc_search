@@ -1,6 +1,7 @@
 export * from './useDepartments'
 export * from './useIncomingDocuments'
 export * from './useOutgoingDocuments'
+export * from './useAvailableDocumentYears'
 export * from './useFileDownload'
 export * from './useDebounce'
 export * from './useUsers'

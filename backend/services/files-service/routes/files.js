@@ -9,6 +9,58 @@ const createLogger = require('../../../shared/utils/logger');
 const audit = require('../../../shared/utils/auditLogger');
 const logger = createLogger('files');
 
+async function querySingleFileRecord(pool, { tableName, documentId }) {
+    const result = await pool
+        .request()
+        .input('docId', documentId)
+        .query(
+            `SELECT TOP 1 FileID, FileName, ContentType FROM dbo.${tableName} WHERE DocumentID = @docId ORDER BY FileID DESC`,
+        );
+
+    const rows = result.recordset || [];
+    return rows.length > 0 ? rows[0] : null;
+}
+
+async function getFileRecordWithFallback({ tableName, documentId, dbKey, year }) {
+    const primaryKey = database.getPrimaryKey();
+    const db2020Key = database.get2020Key();
+
+    const normalizedDbKey = (dbKey || '').toString().trim();
+    const normalizedYear = (year || '').toString().trim();
+    const yearStr = /^\d{4}$/.test(normalizedYear) ? normalizedYear : '';
+
+    if (normalizedDbKey) {
+        const pool = await database.getPoolByDbKey(normalizedDbKey);
+        const record = await querySingleFileRecord(pool, { tableName, documentId });
+        return { record, sourceDb: normalizedDbKey };
+    }
+
+    if (yearStr) {
+        const pool = await database.getPoolForYear(yearStr);
+        const record = await querySingleFileRecord(pool, { tableName, documentId });
+        return { record, sourceDb: database.getDbKeyForYear(yearStr) };
+    }
+
+    // Default: primary then legacy 2020 fallback (kept for backward compatibility)
+    const primaryPool = database.getPool(primaryKey);
+    let record = await querySingleFileRecord(primaryPool, { tableName, documentId });
+    let sourceDb = primaryKey;
+
+    if (!record) {
+        try {
+            const po2020Pool = await database.getPoolByDbKey(db2020Key);
+            record = await querySingleFileRecord(po2020Pool, { tableName, documentId });
+            if (record) {
+                sourceDb = db2020Key;
+            }
+        } catch {
+            // ignore
+        }
+    }
+
+    return { record, sourceDb };
+}
+
 function toSafeRelativePath(filePath) {
     if (!filePath || typeof filePath !== 'string') return '';
 
@@ -49,19 +101,18 @@ router.get('/download/incoming/:documentId', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid documentId' });
         }
 
-        const pool = database.getPool();
-        
         logger.debug('Download incoming request', { documentId });
-        
-        const result = await pool.request()
-            .input('docId', documentId)
-            .query(`SELECT TOP 1 FileID, FileName, ContentType FROM dbo.WF_Incoming_Doc_Files WHERE DocumentID = @docId ORDER BY FileID DESC`);
 
-        if (!result.recordset || result.recordset.length === 0) {
+        const { record: fileRec } = await getFileRecordWithFallback({
+            tableName: 'WF_Incoming_Doc_Files',
+            documentId,
+            dbKey: req.query.db,
+            year: req.query.year,
+        });
+
+        if (!fileRec) {
             return res.status(404).json({ success: false, message: 'No file found for this document' });
         }
-
-        const fileRec = result.recordset[0];
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 
@@ -129,19 +180,18 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid documentId' });
         }
 
-        const pool = database.getPool();
-        
         logger.debug('Download outgoing request', { documentId });
-        
-        const result = await pool.request()
-            .input('docId', documentId)
-            .query(`SELECT TOP 1 FileID, FileName, ContentType FROM dbo.WF_Outgoing_Doc_Files WHERE DocumentID = @docId ORDER BY FileID DESC`);
 
-        if (!result.recordset || result.recordset.length === 0) {
+        const { record: fileRec } = await getFileRecordWithFallback({
+            tableName: 'WF_Outgoing_Doc_Files',
+            documentId,
+            dbKey: req.query.db,
+            year: req.query.year,
+        });
+
+        if (!fileRec) {
             return res.status(404).json({ success: false, message: 'No file found for this document' });
         }
-
-        const fileRec = result.recordset[0];
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 
@@ -210,19 +260,18 @@ router.get('/download/:documentId', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid documentId' });
         }
 
-        const pool = database.getPool();
-        
         logger.debug('Download legacy request', { documentId });
-        
-        const result = await pool.request()
-            .input('docId', documentId)
-            .query(`SELECT TOP 1 FileID, FileName, ContentType FROM dbo.WF_Incoming_Doc_Files WHERE DocumentID = @docId ORDER BY FileID DESC`);
 
-        if (!result.recordset || result.recordset.length === 0) {
+        const { record: fileRec } = await getFileRecordWithFallback({
+            tableName: 'WF_Incoming_Doc_Files',
+            documentId,
+            dbKey: req.query.db,
+            year: req.query.year,
+        });
+
+        if (!fileRec) {
             return res.status(404).json({ success: false, message: 'No file found for this document' });
         }
-
-        const fileRec = result.recordset[0];
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 

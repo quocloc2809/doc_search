@@ -33,9 +33,9 @@ export function useFileDownload() {
     }
   }
 
-  const downloadIncomingFile = (documentId) => runDownload(() => filesApi.downloadIncomingFile(documentId))
-  const downloadOutgoingFile = (documentId) => runDownload(() => filesApi.downloadOutgoingFile(documentId))
-  const downloadLegacyIncomingFile = (documentId) => runDownload(() => filesApi.downloadLegacyIncomingFile(documentId))
+  const downloadIncomingFile = (documentId, db) => runDownload(() => filesApi.downloadIncomingFile(documentId, { db }))
+  const downloadOutgoingFile = (documentId, db) => runDownload(() => filesApi.downloadOutgoingFile(documentId, { db }))
+  const downloadLegacyIncomingFile = (documentId, db) => runDownload(() => filesApi.downloadLegacyIncomingFile(documentId, { db }))
 
   return {
     isDownloading,
