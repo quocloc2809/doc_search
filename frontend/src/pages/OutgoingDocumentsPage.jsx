@@ -211,11 +211,11 @@ export default function OutgoingDocumentsPage() {
             key: 'DocumentNo',
             title: 'Số hiệu',
             render: row => (
-                <p
+                <span
                     className='font-semibold hover:underline hover:cursor-pointer'
                     onClick={() => handleOutGoingDetail(row.DocumentID, row.SourceDb)}>
                     {row.DocumentNo}
-                </p>
+                </span>
             ),
         },
         {
@@ -302,6 +302,7 @@ export default function OutgoingDocumentsPage() {
     }
 
     return (
+        
         <>
             <div className='outgoing-toolbar'>
                 <div className='outgoing-toolbar-left'>
@@ -380,7 +381,7 @@ export default function OutgoingDocumentsPage() {
                 pagination
                 autoPageSize={false}
                 initialPageSize={20}
-                pageSizeOptions={[5, 15, 20]}
+                pageSizeOptions={[5, 10, 20, 50, 100]}
                 emptyText='Không có văn bản đi'
                 isLoading={isLoading}
             />

@@ -318,7 +318,7 @@ export default function CommonTable({
                                         const lineClamp =
                                             Number(column.lineClamp) > 1
                                                 ? Number(column.lineClamp)
-                                                : 1;
+                                                : 2;
                                         const textClassName =
                                             lineClamp > 1
                                                 ? 'common-table-text common-table-text-multiline'

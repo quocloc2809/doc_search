@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import CustomSelect from '@/components/custom/CustomSelect';
 import FilterDialog from '@/components/filter/FilterDialog';
+import Spinner from '@/components/loading/Spinner';
 
 const SEARCH_FIELDS = [
     { value: 'all', label: 'Tất cả' },
@@ -204,26 +205,22 @@ export default function IncomingDocumentsPage() {
             key: 'DocumentNo',
             title: 'Số hiệu',
             render: row => (
-                <p
+                <span
                     className='font-semibold hover:cursor-pointer hover:underline'
                     onClick={() => handleIncomingDetail(row.DocumentID, row.SourceDb)}>
                     {row.DocumentNo}
-                </p>
+                </span>
             ),
         },
         { key: 'DocumentSummary', title: 'Trích yếu' },
         {
-            key: 'CreatedDate',
-            title: 'Ngày tạo',
-            render: row => formatDate(row.CreatedDate),
+            key: 'ReceivedDate',
+            title: 'Ngày đến',
+            render: row => formatDate(row.ReceivedDate),
         },
+        { key: 'IssuedOrganizationName', title: 'Ban hành' },
         { key: 'LeaderName', title: 'Lãnh đạo bút phê' },
         { key: 'GroupName', title: 'Đơn vị xử lý chính' },
-        {
-            key: 'ExpiredDate',
-            title: 'Ngày hết hạn',
-            render: row => formatDate(row.ExpiredDate),
-        },
         {
             key: 'actions',
             title: 'Thao tác',
@@ -253,7 +250,7 @@ export default function IncomingDocumentsPage() {
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent side='bottom'>
-                            <p>Tải xuống</p>
+                            {isDownloading && <Spinner />} <p>Tải xuống</p>
                         </TooltipContent>
                     </Tooltip>
                 </div>
@@ -368,7 +365,7 @@ export default function IncomingDocumentsPage() {
                 pagination
                 autoPageSize={false}
                 initialPageSize={20}
-                pageSizeOptions={[5, 15, 20]}
+                pageSizeOptions={[5, 10, 20, 50, 100]}
                 emptyText='Không có văn bản đến'
                 isLoading={isLoading}
             />

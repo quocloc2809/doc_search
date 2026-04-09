@@ -10,7 +10,7 @@ const YEARS_CACHE_TTL_MS = 5 * 60 * 1000;
 let yearsCache = { ts: 0, data: null };
 
 function escapeLike(value) {
-    return String(value || '').replace(/[\[\]%_]/g, (m) => `\\${m}`);
+    return String(value || '').replace(/[\[\]%_]/g, m => `\\${m}`);
 }
 
 function escapeRegex(value) {
@@ -38,8 +38,14 @@ async function getYearsFromPrimaryDb(pool) {
     const inRow = incoming.recordset?.[0] || {};
     const outRow = outgoing.recordset?.[0] || {};
 
-    const minCandidates = [Number(inRow.minYear), Number(outRow.minYear)].filter(Number.isFinite);
-    const maxCandidates = [Number(inRow.maxYear), Number(outRow.maxYear)].filter(Number.isFinite);
+    const minCandidates = [
+        Number(inRow.minYear),
+        Number(outRow.minYear),
+    ].filter(Number.isFinite);
+    const maxCandidates = [
+        Number(inRow.maxYear),
+        Number(outRow.maxYear),
+    ].filter(Number.isFinite);
 
     if (minCandidates.length === 0 || maxCandidates.length === 0) {
         return [];
@@ -47,7 +53,11 @@ async function getYearsFromPrimaryDb(pool) {
 
     const minYear = Math.min(...minCandidates);
     const maxYear = Math.max(...maxCandidates);
-    if (!Number.isFinite(minYear) || !Number.isFinite(maxYear) || maxYear < minYear) {
+    if (
+        !Number.isFinite(minYear) ||
+        !Number.isFinite(maxYear) ||
+        maxYear < minYear
+    ) {
         return [];
     }
 
@@ -66,15 +76,19 @@ async function getArchiveYearsFromServer(pool) {
 
     const [prefix, suffix] = pattern.split('{year}');
     const likePattern = `${escapeLike(prefix)}____${escapeLike(suffix)}`;
-    const regex = new RegExp(`^${escapeRegex(prefix)}(\\d{4})${escapeRegex(suffix)}$`);
+    const regex = new RegExp(
+        `^${escapeRegex(prefix)}(\\d{4})${escapeRegex(suffix)}$`,
+    );
 
     try {
         const result = await pool
             .request()
             .input('likePattern', sql.NVarChar, likePattern)
-            .query(`SELECT name FROM sys.databases WHERE name LIKE @likePattern ESCAPE '\\'`);
+            .query(
+                `SELECT name FROM sys.databases WHERE name LIKE @likePattern ESCAPE '\\'`,
+            );
 
-        const names = (result.recordset || []).map((r) => r.name).filter(Boolean);
+        const names = (result.recordset || []).map(r => r.name).filter(Boolean);
         const years = [];
         for (const name of names) {
             const m = String(name).match(regex);
@@ -85,7 +99,9 @@ async function getArchiveYearsFromServer(pool) {
         return years;
     } catch (e) {
         // Permission may block listing DBs; ignore and rely on env mapping.
-        logger.warn('Cannot list archive DBs from sys.databases', { error: e?.message || String(e) });
+        logger.warn('Cannot list archive DBs from sys.databases', {
+            error: e?.message || String(e),
+        });
         return [];
     }
 }
@@ -99,16 +115,21 @@ router.get('/available-years', async (req, res) => {
 
         const primaryPool = database.getPool();
 
-        const [primaryYears, envArchiveYears, serverArchiveYears] = await Promise.all([
-            getYearsFromPrimaryDb(primaryPool),
-            Promise.resolve(database.getArchiveYearsFromEnv()),
-            getArchiveYearsFromServer(primaryPool),
-        ]);
+        const [primaryYears, envArchiveYears, serverArchiveYears] =
+            await Promise.all([
+                getYearsFromPrimaryDb(primaryPool),
+                Promise.resolve(database.getArchiveYearsFromEnv()),
+                getArchiveYearsFromServer(primaryPool),
+            ]);
 
         const merged = Array.from(
-            new Set([...(primaryYears || []), ...(envArchiveYears || []), ...(serverArchiveYears || [])]),
+            new Set([
+                ...(primaryYears || []),
+                ...(envArchiveYears || []),
+                ...(serverArchiveYears || []),
+            ]),
         )
-            .filter((y) => /^\d{4}$/.test(y))
+            .filter(y => /^\d{4}$/.test(y))
             .sort((a, b) => Number(b) - Number(a));
 
         yearsCache = { ts: now, data: merged };
@@ -133,7 +154,10 @@ function sortByCreatedDateDescThenIdDesc(a, b) {
     return bId - aId;
 }
 
-async function queryIncomingList(pool, { hasGroupFilter, groupIdNum, year, sql }) {
+async function queryIncomingList(
+    pool,
+    { hasGroupFilter, groupIdNum, year, sql },
+) {
     const request = pool.request();
     const conditions = [];
 
@@ -193,18 +217,31 @@ router.get('/', async (req, res) => {
     try {
         const rawYear = (req.query.year || '').toString().trim();
         const year = /^\d{4}$/.test(rawYear) ? Number(rawYear) : null;
-        const sourceKey = year ? database.getDbKeyForYear(rawYear) : database.getPrimaryKey();
-        const pool = year ? await database.getPoolForYear(rawYear) : database.getPool();
+        const sourceKey = year
+            ? database.getDbKeyForYear(rawYear)
+            : database.getPrimaryKey();
+        const pool = year
+            ? await database.getPoolForYear(rawYear)
+            : database.getPool();
 
-        const userRole = (req.headers['x-user-role'] || '').toString().toLowerCase();
+        const userRole = (req.headers['x-user-role'] || '')
+            .toString()
+            .toLowerCase();
         const userGroupId = req.headers['x-user-group-id'] || '';
         const groupIdNum = parseInt(userGroupId, 10);
         const isAdmin = userRole === 'admin';
         const hasGroupFilter =
             !isAdmin && Number.isFinite(groupIdNum) && groupIdNum !== 0;
 
-        const rows = (await queryIncomingList(pool, { hasGroupFilter, groupIdNum, year, sql }))
-            .map((r) => ({ ...r, SourceDb: sourceKey }))
+        const rows = (
+            await queryIncomingList(pool, {
+                hasGroupFilter,
+                groupIdNum,
+                year,
+                sql,
+            })
+        )
+            .map(r => ({ ...r, SourceDb: sourceKey }))
             .sort(sortByCreatedDateDescThenIdDesc);
 
         // Leader (lãnh đạo bút phê) logic: use LeaderName joined from Core_Users
@@ -281,7 +318,7 @@ router.get('/:id', async (req, res) => {
             sourceDb = primaryKey;
         }
 
-        const queryDetail = async (pool) =>
+        const queryDetail = async pool =>
             pool.request().input('id', sql.Int, id).query(`
             SELECT
               doc.DocumentID,
@@ -317,7 +354,11 @@ router.get('/:id', async (req, res) => {
         let result = await queryDetail(pool);
 
         // Back-compat fallback: if client didn't specify db/year, still try the legacy 2020 DB.
-        if ((!result.recordset || result.recordset.length === 0) && !dbKey && !year) {
+        if (
+            (!result.recordset || result.recordset.length === 0) &&
+            !dbKey &&
+            !year
+        ) {
             try {
                 const po2020Pool = await database.getPoolByDbKey(db2020Key);
                 result = await queryDetail(po2020Pool);
@@ -329,7 +370,10 @@ router.get('/:id', async (req, res) => {
             }
         }
 
-        logger.debug('Incoming document detail', { id, documentId: result.recordset[0]?.DocumentID });
+        logger.debug('Incoming document detail', {
+            id,
+            documentId: result.recordset[0]?.DocumentID,
+        });
 
         if (result.recordset.length === 0) {
             return res.status(404).json({

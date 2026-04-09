@@ -12,44 +12,46 @@ import DocumentLayout from '@/common/layout/DocumentLayout';
 
 function App() {
     return (
-        <Routes>
-            <Route path={APP_ROUTES.LOGIN} element={<LoginPage />} />
-            <Route element={<ProtectedRoute />}>
-                <Route
-                    path={APP_ROUTES.HOME}
-                    element={
-                        <Navigate to={APP_ROUTES.INCOMING_DOCUMENTS} replace />
-                    }
-                />
-                <Route element={<DocumentLayout />}>
+        <>
+            <Routes>
+                <Route path={APP_ROUTES.LOGIN} element={<LoginPage />} />
+                <Route element={<ProtectedRoute />}>
                     <Route
-                        path={APP_ROUTES.INCOMING_DOCUMENTS}
-                        element={<IncomingDocumentsPage />}
+                        path={APP_ROUTES.HOME}
+                        element={
+                            <Navigate
+                                to={APP_ROUTES.INCOMING_DOCUMENTS}
+                                replace
+                            />
+                        }
+                    />
+                    <Route element={<DocumentLayout />}>
+                        <Route
+                            path={APP_ROUTES.INCOMING_DOCUMENTS}
+                            element={<IncomingDocumentsPage />}
+                        />
+                        <Route
+                            path={APP_ROUTES.OUTGOING_DOCUMENTS}
+                            element={<OutgoingDocumentsPage />}
+                        />
+                    </Route>
+                    <Route
+                        path={APP_ROUTES.INCOMING_DOCUMENT_DETAIL}
+                        element={<IncomingDetailPage />}
                     />
                     <Route
-                        path={APP_ROUTES.OUTGOING_DOCUMENTS}
-                        element={<OutgoingDocumentsPage />}
+                        path={APP_ROUTES.OUTGOING_DOCUMENT_DETAIL}
+                        element={<OutgoingDetailPage />}
                     />
+                    <Route path={APP_ROUTES.ADMIN} element={<AdminPage />} />
                 </Route>
+                <Route path='*' element={<NotFoundPage />} />
                 <Route
-                    path={APP_ROUTES.INCOMING_DOCUMENT_DETAIL}
-                    element={<IncomingDetailPage />}
+                    path='/home'
+                    element={<Navigate to={APP_ROUTES.HOME} replace />}
                 />
-                <Route
-                    path={APP_ROUTES.OUTGOING_DOCUMENT_DETAIL}
-                    element={<OutgoingDetailPage />}
-                />
-                <Route
-                    path={APP_ROUTES.ADMIN}
-                    element={<AdminPage />}
-                />
-            </Route>
-            <Route path='*' element={<NotFoundPage />} />
-            <Route
-                path='/home'
-                element={<Navigate to={APP_ROUTES.HOME} replace />}
-            />
-        </Routes>
+            </Routes>
+        </>
     );
 }
 
