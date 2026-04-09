@@ -61,10 +61,6 @@ export default function LoginPage() {
         }
     };
 
-    if (error) {
-        return <ErrorMessage message={error} />;
-    }
-
     return (
         <div className='flex min-h-screen w-full items-center justify-center bg-linear-to-br from-blue-600 to-blue-900'>
             <form className='panel' onSubmit={handleSubmit}>
@@ -86,6 +82,7 @@ export default function LoginPage() {
                     placeholder='Nhập mật khẩu'
                     autoComplete='current-password'
                 />
+                <ErrorMessage message={error} />
                 <Button
                     type='submit'
                     disabled={isSubmitting}

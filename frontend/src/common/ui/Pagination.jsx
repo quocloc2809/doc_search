@@ -35,15 +35,15 @@ export default function Pagination({
     const end = Math.min(currentPage * safePageSize, safeTotalItems);
 
     return (
-        <div className='common-pagination'>
-            <div className='common-pagination-info'>
+        <div className='flex items-center justify-between pt-4'>
+            <div className='text-[#3b4556] text-sm'>
                 Hiển thị {start}-{end} / {safeTotalItems}
             </div>
 
-            <div className='common-pagination-controls'>
+            <div className='flex items-center gap-2 flex-wrap'>
                 <div className='flex items-center gap-2'>
                     <Select
-                        modal={false}
+                        modal={true}
                         disabled={disablePageSizeSelect}
                         value={String(safePageSize)}
                         onValueChange={value =>
@@ -54,7 +54,8 @@ export default function Pagination({
                         </SelectTrigger>
                         <SelectContent
                             side='top'
-                            className='w-[--radix-select-trigger-width]'>
+                            onCloseAutoFocus={e => e.preventDefault()}
+                            className='min-w-17.5 w-17.5'>
                             {pageSizeOptions.map(pageSize => (
                                 <SelectItem
                                     key={pageSize}

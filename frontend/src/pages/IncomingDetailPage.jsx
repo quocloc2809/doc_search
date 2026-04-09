@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
     Breadcrumb,
     BreadcrumbItem,
@@ -12,15 +12,43 @@ import { APP_ROUTES } from '@/common/routing/routes';
 import { Link } from 'react-router-dom';
 import { Paperclip, Download } from 'lucide-react';
 import { useIncomingDocumentDetail } from '@/common/hooks/useIncomingDocumentDetail';
-import { ErrorMessage, LoadingSpinner } from '@/common/ui';
+import { ErrorMessage } from '@/common/ui';
 import Header from '@/common/layout/Header';
 import { formatDate } from '@/common/utils';
 import DocumentDetailSkeleton from '@/components/loading/DocumentDetailSkeleton';
 import { Separator } from '@/components/ui/separator';
+import { Viewer, Worker } from '@react-pdf-viewer/core';
+import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
+import vi_VN from '@react-pdf-viewer/locales/lib/vi_VN.json';
 
 function IncomingDetailPage() {
     const { id } = useParams();
-    const { document, isLoading, error } = useIncomingDocumentDetail(id);
+    const [searchParams] = useSearchParams();
+    const year = searchParams.get('year');
+    const db = searchParams.get('db');
+    const detailParams = useMemo(() => {
+        const params = {};
+        if (year && /^\d{4}$/.test(year)) params.year = year;
+        if (db) params.db = db;
+        return params;
+    }, [year, db]);
+
+    const { document, isLoading, error } = useIncomingDocumentDetail(
+        id,
+        detailParams,
+    );
+
+    const backPath = useMemo(() => {
+        if (year && /^\d{4}$/.test(year)) {
+            return `${APP_ROUTES.INCOMING_DOCUMENTS}?year=${year}`;
+        }
+        return APP_ROUTES.INCOMING_DOCUMENTS;
+    }, [year]);
+
+    const defaultLayoutPluginInstance = defaultLayoutPlugin({
+        theme: 'dark',
+        localization: vi_VN,
+    });
 
     const infoFields = useMemo(
         () => [
@@ -55,19 +83,14 @@ function IncomingDetailPage() {
 
     return (
         <div className='min-h-dvh-screen bg-slate-100 font-sans'>
-            <Header
-                backPath={APP_ROUTES.INCOMING_DOCUMENTS}
-                title={'Chi tiết văn bản'}
-            />
+            <Header backPath={backPath} isDetail />
             <div className='bg-white border-b border-gray-200'>
-                <div className='max-w-7xl mx-auto px-8 py-2.5 flex gap-2 items-center text-xs text-gray-500'>
+                <div className='max-w-7xl xl:max-w-375 xl:mx-auto px-8 py-2.5 flex gap-2 items-center text-xs text-gray-500'>
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem>
                                 <BreadcrumbLink asChild>
-                                    <Link to='/incoming-documents'>
-                                        Văn bản đến
-                                    </Link>
+                                    <Link to={backPath}>Văn bản đến</Link>
                                 </BreadcrumbLink>
                             </BreadcrumbItem>
                             <BreadcrumbSeparator />
@@ -80,10 +103,10 @@ function IncomingDetailPage() {
                     </Breadcrumb>
                 </div>
             </div>
-            <div className='max-w-7xl mx-auto px-8 py-7'>
+            <div className='max-w-7xl xl:max-w-375 xl:mx-auto px-8 py-7'>
                 <div className='flex gap-6 items-start flex-wrap lg:flex-nowrap'>
                     <div className='flex-3 min-w-0'>
-                        <div className='bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5'>
+                        <div className='bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4'>
                             <div
                                 className={`bg-linear-to-br from-blue-900 to-blue-600 p-8`}>
                                 <div className='flex items-center gap-5'>
@@ -108,12 +131,12 @@ function IncomingDetailPage() {
                                 </p>
                             </div>
                             <Separator />
-                            <div className='grid grid-cols-3 gap-2 relative'>
-                                <div className='px-8 py-6 border-b border-gray-100 col-span-1'>
+                            <div className='grid md:grid-cols-2 gap-2'>
+                                <div className='px-8 py-6 border-b border-gray-100 border-r'>
                                     <p className='text-xs text-gray-400 font-bold uppercase tracking-widest mb-4'>
                                         Thông tin chung
                                     </p>
-                                    <div className='grid gap-3'>
+                                    <div className='grid grid-cols-2 gap-3'>
                                         {infoFields.map(([k, v]) => (
                                             <div
                                                 key={k}
@@ -128,10 +151,7 @@ function IncomingDetailPage() {
                                         ))}
                                     </div>
                                 </div>
-                                <div className='absolute left-1/3 top-6 bottom-6 flex items-center'>
-                                    <Separator orientation='vertical' />
-                                </div>
-                                <div className='px-8 py-6 border-b border-gray-100 col-span-2'>
+                                <div className='px-8 py-6 border-b border-gray-100'>
                                     <p className='text-xs text-gray-400 font-bold uppercase tracking-widest mb-4'>
                                         Thông tin nhận văn bản
                                     </p>
@@ -172,6 +192,23 @@ function IncomingDetailPage() {
                                 </div>
                             </div>
                         </div>
+                        {document?.FileName && (
+                            <div className='mt-4'>
+                                <Worker workerUrl='https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.js'>
+                                    <div style={{ height: '750px' }}>
+                                        <Viewer
+                                            defaultScale={1.3}
+                                            theme='dark'
+                                            fileUrl='/file/55.pdf'
+                                            plugins={[
+                                                defaultLayoutPluginInstance,
+                                            ]}
+                                            localization={vi_VN}
+                                        />
+                                    </div>
+                                </Worker>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

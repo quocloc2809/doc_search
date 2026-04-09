@@ -17,8 +17,8 @@ function extractFileNameFromContentDisposition(contentDispositionHeader) {
   }
 }
 
-async function downloadFileByPath(path) {
-  const response = await httpClient.get(path, { responseType: 'blob' })
+async function downloadFileByPath(path, { params } = {}) {
+  const response = await httpClient.get(path, { responseType: 'blob', params })
 
   return {
     blob: response.data,
@@ -27,14 +27,23 @@ async function downloadFileByPath(path) {
   }
 }
 
-export async function downloadIncomingFile(documentId) {
-  return downloadFileByPath(`/api/files/download/incoming/${documentId}`)
+export async function downloadIncomingFile(documentId, { db, year } = {}) {
+  const params = {}
+  if (db) params.db = db
+  if (year) params.year = year
+  return downloadFileByPath(`/api/files/download/incoming/${documentId}`, { params })
 }
 
-export async function downloadOutgoingFile(documentId) {
-  return downloadFileByPath(`/api/files/download/outgoing/${documentId}`)
+export async function downloadOutgoingFile(documentId, { db, year } = {}) {
+  const params = {}
+  if (db) params.db = db
+  if (year) params.year = year
+  return downloadFileByPath(`/api/files/download/outgoing/${documentId}`, { params })
 }
 
-export async function downloadLegacyIncomingFile(documentId) {
-  return downloadFileByPath(`/api/files/download/${documentId}`)
+export async function downloadLegacyIncomingFile(documentId, { db, year } = {}) {
+  const params = {}
+  if (db) params.db = db
+  if (year) params.year = year
+  return downloadFileByPath(`/api/files/download/${documentId}`, { params })
 }

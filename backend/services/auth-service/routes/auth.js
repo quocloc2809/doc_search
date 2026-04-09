@@ -9,7 +9,11 @@ const createLogger = require('../../../shared/utils/logger');
 const logger = createLogger('auth');
 
 function getClientIp(req) {
-    return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
+    return (
+        (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+        req.ip ||
+        ''
+    );
 }
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -65,7 +69,11 @@ router.post('/login', async (req, res) => {
             `);
 
         if (!result.recordset || result.recordset.length === 0) {
-            audit.log('LOGIN_FAILED', { username, ip: getClientIp(req), reason: 'user_not_found' });
+            audit.log('LOGIN_FAILED', {
+                username,
+                ip: getClientIp(req),
+                reason: 'user_not_found',
+            });
             return res.status(401).json({
                 success: false,
                 message: 'Tên đăng nhập hoặc mật khẩu không đúng',
@@ -83,7 +91,11 @@ router.post('/login', async (req, res) => {
 
         const hashedPassword = hashPassword(password, user.Salt);
         if (hashedPassword !== user.PasswordHash) {
-            audit.log('LOGIN_FAILED', { username, ip: getClientIp(req), reason: 'wrong_password' });
+            audit.log('LOGIN_FAILED', {
+                username,
+                ip: getClientIp(req),
+                reason: 'wrong_password',
+            });
             return res.status(401).json({
                 success: false,
                 message: 'Tên đăng nhập hoặc mật khẩu không đúng',
@@ -108,7 +120,11 @@ router.post('/login', async (req, res) => {
             { expiresIn: JWT_EXPIRES_IN },
         );
 
-        audit.log('LOGIN_SUCCESS', { userId: user.UserID, username: user.Username, ip: getClientIp(req) });
+        audit.log('LOGIN_SUCCESS', {
+            userId: user.UserID,
+            username: user.Username,
+            ip: getClientIp(req),
+        });
         res.json({
             success: true,
             message: 'Đăng nhập thành công',
@@ -179,7 +195,7 @@ router.post('/register', async (req, res) => {
             .input('email', sql.NVarChar(100), email || null)
             .input('role', sql.NVarChar(20), role || 'user').query(`
                 INSERT INTO dbo.Users (Username, PasswordHash, Salt, FullName, Email, Role, IsActive, CreatedDate)
-                VALUES (@username, @passwordHash, @salt, @fullName, @email, @role, 1, GETDATE());
+                VALUES (@username, @passwordHash, @salt, @fullName, @email, @role, 1, DATEADD(HOUR,7,GETUTCDATE()));
                 SELECT SCOPE_IDENTITY() AS UserID;
             `);
 
@@ -316,7 +332,12 @@ router.post('/admin/users', requireAdmin, async (req, res) => {
                 SELECT SCOPE_IDENTITY() AS UserID;
             `);
 
-        audit.log('ADMIN_CREATE_USER', { adminId: req.user.userId, adminUsername: req.user.username, targetUsername: username, ip: getClientIp(req) });
+        audit.log('ADMIN_CREATE_USER', {
+            adminId: req.user.userId,
+            adminUsername: req.user.username,
+            targetUsername: username,
+            ip: getClientIp(req),
+        });
         res.status(201).json({
             success: true,
             message: 'Tạo tài khoản thành công',
@@ -413,7 +434,13 @@ router.put('/admin/users/:id', requireAdmin, async (req, res) => {
                 `);
         }
 
-        audit.log('ADMIN_UPDATE_USER', { adminId: req.user.userId, adminUsername: req.user.username, targetUserId: userId, passwordChanged: !!newPassword, ip: getClientIp(req) });
+        audit.log('ADMIN_UPDATE_USER', {
+            adminId: req.user.userId,
+            adminUsername: req.user.username,
+            targetUserId: userId,
+            passwordChanged: !!newPassword,
+            ip: getClientIp(req),
+        });
         res.json({ success: true, message: 'Cập nhật tài khoản thành công' });
     } catch (error) {
         logger.error('Lỗi cập nhật tài khoản', { error: error.message });
@@ -455,7 +482,12 @@ router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
                 .json({ success: false, message: 'Không tìm thấy tài khoản' });
         }
 
-        audit.log('ADMIN_DELETE_USER', { adminId: req.user.userId, adminUsername: req.user.username, targetUserId: userId, ip: getClientIp(req) });
+        audit.log('ADMIN_DELETE_USER', {
+            adminId: req.user.userId,
+            adminUsername: req.user.username,
+            targetUserId: userId,
+            ip: getClientIp(req),
+        });
         res.json({ success: true, message: 'Xoá tài khoản thành công' });
     } catch (error) {
         logger.error('Lỗi xoá tài khoản', { error: error.message });

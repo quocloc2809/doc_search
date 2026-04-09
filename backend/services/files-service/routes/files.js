@@ -9,6 +9,86 @@ const createLogger = require('../../../shared/utils/logger');
 const audit = require('../../../shared/utils/auditLogger');
 const logger = createLogger('files');
 
+async function querySingleFileRecord(pool, { tableName, documentId }) {
+    const result = await pool
+        .request()
+        .input('docId', documentId)
+        .query(
+            `SELECT TOP 1 FileID, FileName, ContentType FROM dbo.${tableName} WHERE DocumentID = @docId ORDER BY FileID DESC`,
+        );
+
+    const rows = result.recordset || [];
+    return rows.length > 0 ? rows[0] : null;
+}
+
+async function getFileRecordWithFallback({ tableName, documentId, dbKey, year }) {
+    const primaryKey = database.getPrimaryKey();
+    const db2020Key = database.get2020Key();
+
+    const normalizedDbKey = (dbKey || '').toString().trim();
+    const normalizedYear = (year || '').toString().trim();
+    const yearStr = /^\d{4}$/.test(normalizedYear) ? normalizedYear : '';
+
+    if (normalizedDbKey) {
+        const pool = await database.getPoolByDbKey(normalizedDbKey);
+        const record = await querySingleFileRecord(pool, { tableName, documentId });
+        return { record, sourceDb: normalizedDbKey };
+    }
+
+    if (yearStr) {
+        const pool = await database.getPoolForYear(yearStr);
+        const record = await querySingleFileRecord(pool, { tableName, documentId });
+        return { record, sourceDb: database.getDbKeyForYear(yearStr) };
+    }
+
+    // Default: primary then legacy 2020 fallback (kept for backward compatibility)
+    const primaryPool = database.getPool(primaryKey);
+    let record = await querySingleFileRecord(primaryPool, { tableName, documentId });
+    let sourceDb = primaryKey;
+
+    if (!record) {
+        try {
+            const po2020Pool = await database.getPoolByDbKey(db2020Key);
+            record = await querySingleFileRecord(po2020Pool, { tableName, documentId });
+            if (record) {
+                sourceDb = db2020Key;
+            }
+        } catch {
+            // ignore
+        }
+    }
+
+    return { record, sourceDb };
+}
+
+function toSafeRelativePath(filePath) {
+    if (!filePath || typeof filePath !== 'string') return '';
+
+    // Normalize separators and remove any leading slashes/backslashes so the path
+    // cannot become drive-root absolute on Windows (e.g. "\\incoming\\a.pdf").
+    let cleaned = filePath.trim();
+    // Convert both Windows and POSIX separators to the current OS separator.
+    // This is important when paths are stored with backslashes but the service
+    // runs on Linux (where backslash is a valid filename character, not a separator).
+    cleaned = cleaned.replace(/[\\/]+/g, path.sep);
+    cleaned = cleaned.replace(/^([\\/])+/, '');
+    cleaned = path.normalize(cleaned);
+    cleaned = cleaned.replace(/^([\\/])+/, '');
+
+    // Reject obvious absolute drive paths that might have been stored in DB.
+    if (/^[A-Za-z]:/.test(cleaned)) {
+        throw new Error('Absolute file paths are not allowed');
+    }
+
+    return cleaned;
+}
+
+function isPathInsideRoot(rootPath, candidatePath) {
+    const rootResolved = path.resolve(rootPath);
+    const candidateResolved = path.resolve(candidatePath);
+    return candidateResolved === rootResolved || candidateResolved.startsWith(rootResolved + path.sep);
+}
+
 function getClientIp(req) {
     return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
 }
@@ -21,19 +101,18 @@ router.get('/download/incoming/:documentId', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid documentId' });
         }
 
-        const pool = database.getPool();
-        
         logger.debug('Download incoming request', { documentId });
-        
-        const result = await pool.request()
-            .input('docId', documentId)
-            .query(`SELECT TOP 1 FileID, FileName, ContentType FROM dbo.WF_Incoming_Doc_Files WHERE DocumentID = @docId ORDER BY FileID DESC`);
 
-        if (!result.recordset || result.recordset.length === 0) {
+        const { record: fileRec } = await getFileRecordWithFallback({
+            tableName: 'WF_Incoming_Doc_Files',
+            documentId,
+            dbKey: req.query.db,
+            year: req.query.year,
+        });
+
+        if (!fileRec) {
             return res.status(404).json({ success: false, message: 'No file found for this document' });
         }
-
-        const fileRec = result.recordset[0];
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 
@@ -41,13 +120,18 @@ router.get('/download/incoming/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        // Xử lý path: bỏ / hoặc \ đầu tiên nếu có
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        let relativePath;
+        try {
+            relativePath = toSafeRelativePath(filePath);
+        } catch (e) {
+            logger.warn('Invalid file path from DB (incoming)', { filePath, error: e.message });
+            return res.status(400).json({ success: false, message: 'Invalid file path' });
+        }
         const fullPath = path.resolve(storageRoot, relativePath);
         
         logger.debug('Resolved path', { storageRoot, fullPath });
 
-        if (!fullPath.startsWith(path.resolve(storageRoot))) {
+        if (!isPathInsideRoot(storageRoot, fullPath)) {
             logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }
@@ -96,19 +180,18 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid documentId' });
         }
 
-        const pool = database.getPool();
-        
         logger.debug('Download outgoing request', { documentId });
-        
-        const result = await pool.request()
-            .input('docId', documentId)
-            .query(`SELECT TOP 1 FileID, FileName, ContentType FROM dbo.WF_Outgoing_Doc_Files WHERE DocumentID = @docId ORDER BY FileID DESC`);
 
-        if (!result.recordset || result.recordset.length === 0) {
+        const { record: fileRec } = await getFileRecordWithFallback({
+            tableName: 'WF_Outgoing_Doc_Files',
+            documentId,
+            dbKey: req.query.db,
+            year: req.query.year,
+        });
+
+        if (!fileRec) {
             return res.status(404).json({ success: false, message: 'No file found for this document' });
         }
-
-        const fileRec = result.recordset[0];
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 
@@ -116,14 +199,19 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        // Xử lý path: bỏ / hoặc \ đầu tiên nếu có
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        let relativePath;
+        try {
+            relativePath = toSafeRelativePath(filePath);
+        } catch (e) {
+            logger.warn('Invalid file path from DB (outgoing)', { filePath, error: e.message });
+            return res.status(400).json({ success: false, message: 'Invalid file path' });
+        }
         const fullPath = path.resolve(storageRoot, relativePath);
         
         logger.debug('Resolved path', { storageRoot, fullPath });
 
         // Kiểm tra security: file phải nằm trong storage root
-        if (!fullPath.startsWith(path.resolve(storageRoot))) {
+        if (!isPathInsideRoot(storageRoot, fullPath)) {
             logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }
@@ -172,19 +260,18 @@ router.get('/download/:documentId', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid documentId' });
         }
 
-        const pool = database.getPool();
-        
         logger.debug('Download legacy request', { documentId });
-        
-        const result = await pool.request()
-            .input('docId', documentId)
-            .query(`SELECT TOP 1 FileID, FileName, ContentType FROM dbo.WF_Incoming_Doc_Files WHERE DocumentID = @docId ORDER BY FileID DESC`);
 
-        if (!result.recordset || result.recordset.length === 0) {
+        const { record: fileRec } = await getFileRecordWithFallback({
+            tableName: 'WF_Incoming_Doc_Files',
+            documentId,
+            dbKey: req.query.db,
+            year: req.query.year,
+        });
+
+        if (!fileRec) {
             return res.status(404).json({ success: false, message: 'No file found for this document' });
         }
-
-        const fileRec = result.recordset[0];
         const filePath = fileRec.FileName || '';
         const contentType = fileRec.ContentType || 'application/octet-stream';
 
@@ -192,12 +279,18 @@ router.get('/download/:documentId', async (req, res) => {
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
 
-        let relativePath = filePath.replace(/^[\/\\]/, '');
+        let relativePath;
+        try {
+            relativePath = toSafeRelativePath(filePath);
+        } catch (e) {
+            logger.warn('Invalid file path from DB (legacy)', { filePath, error: e.message });
+            return res.status(400).json({ success: false, message: 'Invalid file path' });
+        }
         const fullPath = path.resolve(storageRoot, relativePath);
         
         logger.debug('Resolved path', { storageRoot, fullPath });
 
-        if (!fullPath.startsWith(path.resolve(storageRoot))) {
+        if (!isPathInsideRoot(storageRoot, fullPath)) {
             logger.warn('Path traversal attempt blocked', { fullPath, ip: getClientIp(req) });
             return res.status(400).json({ success: false, message: 'Invalid file path' });
         }

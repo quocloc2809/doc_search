@@ -38,7 +38,7 @@ const Header = ({ backPath, title }) => {
 
     return (
         <header className='shadow-lg px-8 bg-linear-to-br from-blue-900 to-blue-600'>
-            <div className='max-w-7xl mx-auto flex items-center justify-between py-4'>
+            <div className='max-w-7xl xl:max-w-375 xl:mx-auto flex items-center justify-between py-4'>
                 <div className='flex items-center gap-4'>
                     {backPath && (
                         <>
