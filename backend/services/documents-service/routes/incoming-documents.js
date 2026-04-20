@@ -220,7 +220,7 @@ router.get('/', async (req, res) => {
         const rawYear = (req.query.year || '').toString().trim();
         const year = /^\d{4}$/.test(rawYear) ? Number(rawYear) : null;
         const sourceKey = year
-            ? database.getDbKeyForYear(rawYear)
+            ? await database.resolveDbKeyForYear(rawYear)
             : database.getPrimaryKey();
         const pool = year
             ? await database.getPoolForYear(rawYear)
@@ -314,7 +314,7 @@ router.get('/:id', async (req, res) => {
             sourceDb = dbKey;
         } else if (year) {
             pool = await database.getPoolForYear(year);
-            sourceDb = database.getDbKeyForYear(year);
+            sourceDb = await database.resolveDbKeyForYear(year);
         } else {
             pool = database.getPool(primaryKey);
             sourceDb = primaryKey;

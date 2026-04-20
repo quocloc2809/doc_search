@@ -38,7 +38,7 @@ async function getFileRecordWithFallback({ tableName, documentId, dbKey, year })
     if (yearStr) {
         const pool = await database.getPoolForYear(yearStr);
         const record = await querySingleFileRecord(pool, { tableName, documentId });
-        return { record, sourceDb: database.getDbKeyForYear(yearStr) };
+        return { record, sourceDb: await database.resolveDbKeyForYear(yearStr) };
     }
 
     // Default: primary then legacy 2020 fallback (kept for backward compatibility)

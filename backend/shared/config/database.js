@@ -7,6 +7,8 @@ const PRIMARY_DB_KEY = 'primary';
 const DB2020_KEY = 'po2020';
 const ARCHIVE_KEY_PREFIX = 'archive_';
 
+const ARCHIVE_YEARS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 function getPrimaryDatabaseName() {
     return process.env.DB_DATABASE || process.env.DB_NAME;
 }
@@ -65,6 +67,14 @@ function resolveArchiveDatabaseName(year) {
     return null;
 }
 
+function escapeLike(value) {
+    return String(value || '').replace(/[\[\]%_]/g, (m) => `\\${m}`);
+}
+
+function escapeRegex(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function buildConfig(databaseName) {
     return {
         server: process.env.DB_SERVER,
@@ -92,6 +102,98 @@ class Database {
         // Back-compat: keep `pool` as the primary pool.
         this.pool = null;
         this.pools = new Map();
+
+        this._archiveYearsCache = { ts: 0, data: null };
+    }
+
+    _getArchivePattern() {
+        const pattern = (process.env.DB_ARCHIVE_PATTERN || '').trim();
+        if (!pattern || !pattern.includes('{year}')) return null;
+        return pattern;
+    }
+
+    _getArchiveYearsFromEnvSet() {
+        const archiveMap = parseArchiveDatabasesFromEnv();
+        return new Set(
+            Array.from(archiveMap.keys()).filter((y) => /^\d{4}$/.test(y)),
+        );
+    }
+
+    async _getArchiveYearsFromServerCached() {
+        const pattern = this._getArchivePattern();
+        if (!pattern) return [];
+
+        const now = Date.now();
+        if (
+            this._archiveYearsCache.data &&
+            now - this._archiveYearsCache.ts < ARCHIVE_YEARS_CACHE_TTL_MS
+        ) {
+            return this._archiveYearsCache.data;
+        }
+
+        const [prefix, suffix] = pattern.split('{year}');
+        const likePattern = `${escapeLike(prefix)}____${escapeLike(suffix)}`;
+        const regex = new RegExp(
+            `^${escapeRegex(prefix)}(\\d{4})${escapeRegex(suffix)}$`,
+        );
+
+        try {
+            const primaryPool = this.getPool(PRIMARY_DB_KEY);
+            if (!primaryPool) {
+                return [];
+            }
+
+            const result = await primaryPool
+                .request()
+                .input('likePattern', sql.NVarChar, likePattern)
+                .query(
+                    `SELECT name FROM sys.databases WHERE name LIKE @likePattern ESCAPE '\\'`,
+                );
+
+            const names = (result.recordset || [])
+                .map((r) => r.name)
+                .filter(Boolean);
+
+            const years = [];
+            for (const name of names) {
+                const m = String(name).match(regex);
+                if (m && m[1]) years.push(m[1]);
+            }
+
+            this._archiveYearsCache = { ts: now, data: years };
+            return years;
+        } catch {
+            // Permission may block listing DBs; ignore and rely on env mapping.
+            this._archiveYearsCache = { ts: now, data: [] };
+            return [];
+        }
+    }
+
+    async shouldUseArchiveDbForYear(year) {
+        const yearStr = String(year || '').trim();
+        if (!/^\d{4}$/.test(yearStr)) return false;
+
+        // If explicitly mapped in env => use archive DB.
+        const envYears = this._getArchiveYearsFromEnvSet();
+        if (envYears.has(yearStr)) return true;
+
+        // If pattern exists, only use it when the DB is confirmed to exist on server.
+        const pattern = this._getArchivePattern();
+        if (!pattern) return false;
+
+        const serverYears = await this._getArchiveYearsFromServerCached();
+        return serverYears.includes(yearStr);
+    }
+
+    async resolveDbKeyForYear(year) {
+        const yearStr = String(year || '').trim();
+        if (!/^\d{4}$/.test(yearStr)) return PRIMARY_DB_KEY;
+
+        const key = this.getArchiveKeyForYear(yearStr);
+        if (!key) return PRIMARY_DB_KEY;
+
+        const shouldUseArchive = await this.shouldUseArchiveDbForYear(yearStr);
+        return shouldUseArchive ? key : PRIMARY_DB_KEY;
     }
 
     async connectPool(key, databaseName) {
@@ -184,12 +286,17 @@ class Database {
     }
 
     getDbKeyForYear(year) {
-        const archiveDbName = resolveArchiveDatabaseName(year);
-        const key = this.getArchiveKeyForYear(year);
-        if (archiveDbName && key) {
-            return key;
-        }
-        return PRIMARY_DB_KEY;
+        // NOTE: This is a synchronous helper kept for backward compatibility.
+        // It only returns an archive key when the year is explicitly mapped via env.
+        // For pattern-based archives, use `await resolveDbKeyForYear(year)`.
+        const yearStr = String(year || '').trim();
+        if (!/^\d{4}$/.test(yearStr)) return PRIMARY_DB_KEY;
+
+        const archiveMap = parseArchiveDatabasesFromEnv();
+        if (!archiveMap.has(yearStr)) return PRIMARY_DB_KEY;
+
+        const key = this.getArchiveKeyForYear(yearStr);
+        return key || PRIMARY_DB_KEY;
     }
 
     getArchiveYearsFromEnv() {
@@ -198,8 +305,18 @@ class Database {
     }
 
     async getPoolForYear(year) {
-        const archiveDbName = resolveArchiveDatabaseName(year);
-        const key = this.getArchiveKeyForYear(year);
+        const yearStr = String(year || '').trim();
+        if (!/^\d{4}$/.test(yearStr)) {
+            return this.getPool(PRIMARY_DB_KEY);
+        }
+
+        const shouldUseArchive = await this.shouldUseArchiveDbForYear(yearStr);
+        if (!shouldUseArchive) {
+            return this.getPool(PRIMARY_DB_KEY);
+        }
+
+        const archiveDbName = resolveArchiveDatabaseName(yearStr);
+        const key = this.getArchiveKeyForYear(yearStr);
 
         if (archiveDbName && key) {
             return await this.connectPool(key, archiveDbName);

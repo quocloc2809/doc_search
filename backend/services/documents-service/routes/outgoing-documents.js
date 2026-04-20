@@ -70,7 +70,9 @@ router.get('/', async (req, res) => {
     try {
         const rawYear = (req.query.year || '').toString().trim();
         const year = /^\d{4}$/.test(rawYear) ? Number(rawYear) : null;
-        const sourceKey = year ? database.getDbKeyForYear(rawYear) : database.getPrimaryKey();
+        const sourceKey = year
+            ? await database.resolveDbKeyForYear(rawYear)
+            : database.getPrimaryKey();
         const pool = year ? await database.getPoolForYear(rawYear) : database.getPool();
 
         const userRole = (req.headers['x-user-role'] || '').toString().toLowerCase();
@@ -101,7 +103,9 @@ router.get('/search', async (req, res) => {
     try {
         const rawYear = (req.query.year || '').toString().trim();
         const year = /^\d{4}$/.test(rawYear) ? Number(rawYear) : null;
-        const sourceKey = year ? database.getDbKeyForYear(rawYear) : database.getPrimaryKey();
+        const sourceKey = year
+            ? await database.resolveDbKeyForYear(rawYear)
+            : database.getPrimaryKey();
         const pool = year ? await database.getPoolForYear(rawYear) : database.getPool();
         const { q } = req.query;
 
@@ -162,7 +166,7 @@ router.get('/:id', async (req, res) => {
             sourceDb = dbKey;
         } else if (year) {
             pool = await database.getPoolForYear(year);
-            sourceDb = database.getDbKeyForYear(year);
+            sourceDb = await database.resolveDbKeyForYear(year);
         } else {
             pool = database.getPool(primaryKey);
             sourceDb = primaryKey;
