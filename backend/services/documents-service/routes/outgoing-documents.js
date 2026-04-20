@@ -50,7 +50,7 @@ async function queryOutgoingList(pool, { hasGroupFilter, groupIdNum, year, sql }
             doc.IssuedGroupID,                
             NULLIF(LTRIM(RTRIM(COALESCE(usr.Lastname, '') + ' ' + COALESCE(usr.FirstName, ''))), '') as SignerFullname,
             CASE
-                WHEN doc.IssuedGroupID > 0 THEN COALESCE(g.RecursiveGroupName, '')
+                WHEN doc.IssuedGroupID > 0 THEN COALESCE(g.GroupName, '')
                 WHEN doc.IssuedGroupID < 0 THEN COALESCE(portal.PortalName, '')
                 ELSE ''
             END AS GroupName
@@ -179,7 +179,7 @@ router.get('/:id', async (req, res) => {
             doc.IssuedGroupID,
             NULLIF(LTRIM(RTRIM(COALESCE(usr.Lastname, '') + ' ' + COALESCE(usr.FirstName, ''))), '') as SignerFullname,
             CASE
-                WHEN doc.IssuedGroupID > 0 THEN COALESCE(g.RecursiveGroupName, '')
+                WHEN doc.IssuedGroupID > 0 THEN COALESCE(g.GroupName, '')
                 WHEN doc.IssuedGroupID < 0 THEN COALESCE(portal.PortalName, '')
                 ELSE ''
             END AS GroupName,

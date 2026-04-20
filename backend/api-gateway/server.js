@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const jwt = require('jsonwebtoken');
+const fs = require('fs');
+const path = require('path');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 require('dotenv').config();
 const createLogger = require('../shared/utils/logger');
@@ -15,6 +17,9 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_PRODUCTION = NODE_ENV === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || '';
 const REQUIRE_AUTH = process.env.REQUIRE_AUTH === 'true';
+
+const LOG_ROOT = process.env.LOG_DIR || path.join(__dirname, '..', 'logs');
+const AUDIT_DIR = path.join(LOG_ROOT, 'audit');
 
 if (IS_PRODUCTION) {
     app.set('trust proxy', 1);
@@ -92,6 +97,89 @@ function verifyAccessToken(req, res, next) {
     }
 }
 
+function requireAdmin(req, res, next) {
+    if (!REQUIRE_AUTH) {
+        return next();
+    }
+
+    if (!req.user) {
+        return res.status(401).json({
+            success: false,
+            message: 'Unauthorized'
+        });
+    }
+
+    if (String(req.user.role || '').toLowerCase() !== 'admin') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden'
+        });
+    }
+
+    return next();
+}
+
+function isValidAuditDate(date) {
+    return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date);
+}
+
+async function resolveAuditLogFilePath(date) {
+    if (date) {
+        if (!isValidAuditDate(date)) {
+            return { error: 'Invalid date format. Use YYYY-MM-DD.' };
+        }
+
+        return { filePath: path.join(AUDIT_DIR, `audit-${date}.log`), date };
+    }
+
+    try {
+        const entries = await fs.promises.readdir(AUDIT_DIR, { withFileTypes: true });
+        const files = entries
+            .filter((e) => e.isFile())
+            .map((e) => e.name)
+            .filter((name) => /^audit-\d{4}-\d{2}-\d{2}\.log$/.test(name))
+            .sort();
+
+        const latest = files[files.length - 1];
+        if (!latest) {
+            return { filePath: null, date: null };
+        }
+
+        const latestDate = latest.slice('audit-'.length, 'audit-YYYY-MM-DD'.length);
+        return { filePath: path.join(AUDIT_DIR, latest), date: latestDate };
+    } catch (err) {
+        if (err && err.code === 'ENOENT') {
+            return { filePath: null, date: null };
+        }
+        throw err;
+    }
+}
+
+function parseJsonLine(line) {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) return null;
+
+    try {
+        const obj = JSON.parse(trimmed);
+        if (!obj || typeof obj !== 'object') {
+            return null;
+        }
+
+        // Winston json formatter typically stores the logged object in `message`.
+        // Our audit logger logs objects (action, ip, userId, username...), so flatten
+        // message fields to top-level for easier consumption in UI.
+        if (obj.message && typeof obj.message === 'object' && !Array.isArray(obj.message)) {
+            const flattened = { ...obj, ...obj.message };
+            delete flattened.message;
+            return flattened;
+        }
+
+        return obj;
+    } catch {
+        return null;
+    }
+}
+
 // Logging middleware
 app.use((req, res, next) => {
     logger.info(`${req.method} ${req.path}`, { ip: req.ip });
@@ -130,6 +218,46 @@ app.get('/', (req, res) => {
             files: '/api/files/*'
         }
     });
+});
+
+// Audit logs (admin only)
+// GET /api/audit?date=YYYY-MM-DD&limit=200
+app.get('/api/audit', verifyAccessToken, requireAdmin, async (req, res, next) => {
+    try {
+        const date = req.query.date;
+        const limitRaw = req.query.limit;
+        const limit = Math.max(1, Math.min(Number(limitRaw || 200), 1000));
+
+        const resolved = await resolveAuditLogFilePath(date);
+        if (resolved.error) {
+            return res.status(400).json({ success: false, message: resolved.error });
+        }
+
+        if (!resolved.filePath) {
+            return res.json({ success: true, data: [], meta: { date: resolved.date } });
+        }
+
+        let content;
+        try {
+            content = await fs.promises.readFile(resolved.filePath, 'utf8');
+        } catch (err) {
+            if (err && err.code === 'ENOENT') {
+                return res.json({ success: true, data: [], meta: { date: resolved.date } });
+            }
+            throw err;
+        }
+
+        const lines = content.split(/\r?\n/).filter(Boolean);
+        const tailLines = lines.slice(-limit);
+        const items = tailLines
+            .map(parseJsonLine)
+            .filter(Boolean)
+            .reverse();
+
+        return res.json({ success: true, data: items, meta: { date: resolved.date } });
+    } catch (err) {
+        return next(err);
+    }
 });
 
 // Proxy configuration for each service

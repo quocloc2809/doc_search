@@ -259,10 +259,6 @@ function ComboboxChipsInput({
   );
 }
 
-function useComboboxAnchor() {
-  return React.useRef(null);
-}
-
 export {
   Combobox,
   ComboboxInput,
@@ -279,5 +275,4 @@ export {
   ComboboxChipsInput,
   ComboboxTrigger,
   ComboboxValue,
-  useComboboxAnchor,
 }

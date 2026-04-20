@@ -12,14 +12,14 @@ router.get('/', async (req, res) => {
         const result = await pool.request().query(`
             SELECT
                 GroupID,
-                RecursiveGroupName AS GroupName
+                GroupName
             FROM dbo.Core_Groups
             WHERE GroupID IS NOT NULL
-                AND RecursiveGroupName IS NOT NULL
-                AND LTRIM(RTRIM(RecursiveGroupName)) <> ''
+                AND GroupName IS NOT NULL
+                AND LTRIM(RTRIM(GroupName)) <> ''
                 AND IsView = 0
                 AND IsShow = 1
-            ORDER BY RecursiveGroupName
+            ORDER BY GroupName
         `);
 
         res.json({

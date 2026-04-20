@@ -188,21 +188,23 @@ async function queryIncomingList(
             doc.DocumentID,
             doc.DocumentNo,
             COALESCE(doc.CreatedDate, doc.ReceivedDate) AS CreatedDate,
+            COALESCE(doc.ReceivedDate, doc.CreatedDate) AS ReceivedDate,
             doc.DocumentSummary,
+            COALESCE(NULLIF(LTRIM(RTRIM(o.Name)), ''), NULLIF(LTRIM(RTRIM(doc.issuedOrganizationName2)), ''), '') AS IssuedOrganizationName,
             doc.UpdatedDate,
             doc.ExpiredDate,
             doc.Status,
             doc.AssignedGroupID,
             doc.AssignedReviewedUserID,
             doc.CompletedDate,
-            doc.ReviewNote,
             CASE
-                WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.RecursiveGroupName, '')
+                WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.GroupName, '')
                 WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')
                 ELSE ''
             END AS GroupName,
             NULLIF(LTRIM(RTRIM(COALESCE(usr.Lastname, '') + ' ' + COALESCE(usr.FirstName, ''))), '') as LeaderName
         FROM dbo.WF_Incoming_Docs doc
+        LEFT JOIN dbo.WF_Organizations o ON o.OrganizationId = doc.IssuedOrganizationID
         LEFT JOIN dbo.Core_Groups grp ON doc.AssignedGroupID > 0 AND grp.GroupID = doc.AssignedGroupID AND grp.IsView = 0 AND grp.IsShow = 1
         LEFT JOIN dbo.Core_Portals portal ON doc.AssignedGroupID < 0 AND portal.PortalId = ABS(doc.AssignedGroupID)
         LEFT JOIN dbo.Core_Users usr ON usr.UserID = doc.AssignedReviewedUserID
@@ -327,7 +329,7 @@ router.get('/:id', async (req, res) => {
               doc.DocumentSummary,
               doc.issuedOrganizationName2,
               CASE
-                    WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.RecursiveGroupName, '')
+                    WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.GroupName, '')
                     WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')
                     ELSE ''
                    END AS GroupName,

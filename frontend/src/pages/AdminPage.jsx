@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useDepartments, useToast, useUsers } from '../common/hooks'
+import { useAuditLogs, useDepartments, useToast, useUsers } from '../common/hooks'
 import { logout } from '../common/auth/authService'
 import { Button, ErrorMessage, LoadingSpinner, Toast } from '../common/ui'
 import { formatDateTime } from '../common/utils'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import './AdminPage.css'
 
 const EMPTY_FORM = { username: '', password: '', fullName: '', email: '', role: 'user', groupId: '', isActive: true }
@@ -13,6 +14,9 @@ export default function AdminPage() {
     const { users, isLoading, error, createUser, updateUser, deleteUser } = useUsers()
     const { departments } = useDepartments()
     const toast = useToast()
+    const { auditLogs, isLoading: isAuditLoading, error: auditError, meta: auditMeta, refetch: refetchAudit } = useAuditLogs({ limit: 200 })
+
+    const [activeTab, setActiveTab] = useState('users') // 'users' | 'audit'
 
     const [modalMode, setModalMode] = useState(null) // 'add' | 'edit'
     const [editTarget, setEditTarget] = useState(null)
@@ -146,76 +150,145 @@ export default function AdminPage() {
             <div className='panel-wide panel panel-full-height'>
                 <div className='admin-page'>
                     <div className='admin-page-header'>
-                        <h1 className='admin-page-title'>Quản lý tài khoản</h1>
+                        <h1 className='admin-page-title'>Quản trị</h1>
                         <div className='admin-page-header-actions'>
-                            <Button onClick={openAdd}>+ Thêm tài khoản</Button>
+                            {activeTab === 'users' && (
+                                <Button onClick={openAdd}>+ Thêm tài khoản</Button>
+                            )}
+                            {activeTab === 'audit' && (
+                                <Button className='common-button-ghost' onClick={refetchAudit} disabled={isAuditLoading}>
+                                    {isAuditLoading ? 'Đang tải...' : 'Refresh'}
+                                </Button>
+                            )}
                             <Button className='common-button-ghost' onClick={handleLogout}>Đăng xuất</Button>
                         </div>
                     </div>
 
-                    {error && <ErrorMessage message={error} />}
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full flex flex-col flex-1'>
+                        <TabsList variant='line' className='bg-background rounded-none border-b p-0'>
+                            <TabsTrigger value='users' className='w-full'>
+                                Tài khoản
+                            </TabsTrigger>
+                            <TabsTrigger value='audit' className='w-full'>
+                                Audit log
+                            </TabsTrigger>
+                        </TabsList>
 
-                    {isLoading ? (
-                        <LoadingSpinner />
-                    ) : (
-                        <div className='admin-table-wrapper'>
-                            <table className='admin-table'>
-                                <thead>
-                                    <tr>
-                                        <th>STT</th>
-                                        <th>Tên đăng nhập</th>
-                                        <th>Họ tên</th>
-                                        <th>Email</th>
-                                        <th>Đơn vị</th>
-                                        <th>Vai trò</th>
-                                        <th>Trạng thái</th>
-                                        <th>Ngày tạo</th>
-                                        <th>Hành động</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {users.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={9} className='admin-table-empty'>
-                                                Không có dữ liệu
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        users.map((user, index) => (
-                                            <tr key={user.UserID}>
-                                                <td>{index + 1}</td>
-                                                <td>{user.Username}</td>
-                                                <td>{user.FullName || '-'}</td>
-                                                <td>{user.Email || '-'}</td>
-                                                <td>{user.GroupName || '-'}</td>
-                                                <td>
-                                                    <span className={`admin-badge ${user.Role === 'admin' ? 'admin-badge-admin' : 'admin-badge-user'}`}>
-                                                        {user.Role === 'admin' ? 'Admin' : 'User'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <span className={`admin-badge ${user.IsActive ? 'admin-badge-active' : 'admin-badge-inactive'}`}>
-                                                        {user.IsActive ? 'Hoạt động' : 'Vô hiệu'}
-                                                    </span>
-                                                </td>
-                                                <td>{formatDateTime(user.CreatedDate)}</td>
-                                                <td>
-                                                    <div className='admin-actions'>
-                                                        <button className='admin-btn-edit' onClick={() => openEdit(user)}>
-                                                            Sửa
-                                                        </button>
-                                                        <button className='admin-btn-delete' onClick={() => openDelete(user)}>
-                                                            Xoá
-                                                        </button>
-                                                    </div>
-                                                </td>
+                        <TabsContent value='users' className='flex-1'>
+                            {error && <ErrorMessage message={error} />}
+
+                            {isLoading ? (
+                                <LoadingSpinner />
+                            ) : (
+                                <div className='admin-table-wrapper'>
+                                    <table className='admin-table'>
+                                        <thead>
+                                            <tr>
+                                                <th>STT</th>
+                                                <th>Tên đăng nhập</th>
+                                                <th>Họ tên</th>
+                                                <th>Email</th>
+                                                <th>Đơn vị</th>
+                                                <th>Vai trò</th>
+                                                <th>Trạng thái</th>
+                                                <th>Ngày tạo</th>
+                                                <th>Hành động</th>
                                             </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+                                        </thead>
+                                        <tbody>
+                                            {users.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={9} className='admin-table-empty'>
+                                                        Không có dữ liệu
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                users.map((user, index) => (
+                                                    <tr key={user.UserID}>
+                                                        <td>{index + 1}</td>
+                                                        <td>{user.Username}</td>
+                                                        <td>{user.FullName || '-'}</td>
+                                                        <td>{user.Email || '-'}</td>
+                                                        <td>{user.GroupName || '-'}</td>
+                                                        <td>
+                                                            <span className={`admin-badge ${user.Role === 'admin' ? 'admin-badge-admin' : 'admin-badge-user'}`}>
+                                                                {user.Role === 'admin' ? 'Admin' : 'User'}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <span className={`admin-badge ${user.IsActive ? 'admin-badge-active' : 'admin-badge-inactive'}`}>
+                                                                {user.IsActive ? 'Hoạt động' : 'Vô hiệu'}
+                                                            </span>
+                                                        </td>
+                                                        <td>{formatDateTime(user.CreatedDate)}</td>
+                                                        <td>
+                                                            <div className='admin-actions'>
+                                                                <button className='admin-btn-edit' onClick={() => openEdit(user)}>
+                                                                    Sửa
+                                                                </button>
+                                                                <button className='admin-btn-delete' onClick={() => openDelete(user)}>
+                                                                    Xoá
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </TabsContent>
+
+                        <TabsContent value='audit' className='flex-1'>
+                            {auditError && <ErrorMessage message={auditError} />}
+
+                            {isAuditLoading ? (
+                                <LoadingSpinner />
+                            ) : (
+                                <div className='admin-table-wrapper admin-table-wrapper-audit'>
+                                    <table className='admin-table'>
+                                        <thead>
+                                            <tr>
+                                                <th>Thời gian</th>
+                                                <th>Action</th>
+                                                <th>User</th>
+                                                <th>IP</th>
+                                                <th>Chi tiết</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {auditLogs.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={5} className='admin-table-empty'>
+                                                        Không có dữ liệu{auditMeta?.date ? ` (${auditMeta.date})` : ''}
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                auditLogs.map((item, index) => {
+                                                    const { timestamp, action, ip, username, adminUsername, userId, adminId, ...rest } = item || {}
+                                                    const displayUser = adminUsername || username || (adminId != null ? `adminId:${adminId}` : '') || (userId != null ? `userId:${userId}` : '') || '-'
+                                                    const displayIp = ip || '-'
+                                                    const detailObj = Object.keys(rest || {}).length ? rest : null
+                                                    const detailText = detailObj ? JSON.stringify(detailObj) : '-'
+
+                                                    return (
+                                                        <tr key={`${timestamp || 't'}-${index}`}>
+                                                            <td>{timestamp ? formatDateTime(timestamp) : '-'}</td>
+                                                            <td>{action || '-'}</td>
+                                                            <td>{displayUser}</td>
+                                                            <td>{displayIp}</td>
+                                                            <td style={{ maxWidth: 520, whiteSpace: 'normal' }}>{detailText}</td>
+                                                        </tr>
+                                                    )
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </TabsContent>
+                    </Tabs>
                 </div>
             </div>
 

@@ -33,6 +33,10 @@
   border-radius: 8px;
 }
 
+.admin-table-wrapper-audit {
+  flex: 0 0 320px;
+}
+
 .admin-table {
   width: 100%;
   border-collapse: collapse;

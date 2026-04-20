@@ -1,4 +1,5 @@
 export * as authApi from './authApi'
+export * as auditApi from './auditApi'
 export * as documentsApi from './documentsApi'
 export * as departmentsApi from './departmentsApi'
 export * as filesApi from './filesApi'

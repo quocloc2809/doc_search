@@ -259,7 +259,7 @@ router.get('/admin/users', requireAdmin, async (req, res) => {
         const result = await pool.request().query(`
             SELECT u.UserID, u.Username, u.FullName, u.Email, u.Role, u.IsActive,
                    u.CreatedDate, u.LastLoginDate, u.GroupID,
-                   COALESCE(g.RecursiveGroupName, '') AS GroupName
+                   COALESCE(g.GroupName, '') AS GroupName
             FROM dbo.Users u
             LEFT JOIN dbo.Core_Groups g ON g.GroupID = u.GroupID AND g.IsView = 0 AND g.IsShow = 1
             ORDER BY u.CreatedDate DESC
