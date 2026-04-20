@@ -20,6 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import { Viewer, Worker } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import vi_VN from '@react-pdf-viewer/locales/lib/vi_VN.json';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.js?url';
 
 function IncomingDetailPage() {
     const { id } = useParams();
@@ -49,6 +50,13 @@ function IncomingDetailPage() {
         theme: 'dark',
         localization: vi_VN,
     });
+
+    const pdfUrl = useMemo(() => {
+        // Vite serves `public/` at `BASE_URL`. Avoid hard-coded absolute paths
+        // so production deployments under a sub-path still work.
+        const base = import.meta.env.BASE_URL || '/';
+        return `${base}file/55.pdf`;
+    }, []);
 
     const infoFields = useMemo(
         () => [
@@ -194,12 +202,12 @@ function IncomingDetailPage() {
                         </div>
                         {document?.FileName && (
                             <div className='mt-4'>
-                                <Worker workerUrl='https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.js'>
+                                <Worker workerUrl={pdfWorkerUrl}>
                                     <div style={{ height: '750px' }}>
                                         <Viewer
                                             defaultScale={1.3}
                                             theme='dark'
-                                            fileUrl='/file/55.pdf'
+                                            fileUrl={pdfUrl}
                                             plugins={[
                                                 defaultLayoutPluginInstance,
                                             ]}

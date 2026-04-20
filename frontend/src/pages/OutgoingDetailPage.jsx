@@ -21,6 +21,7 @@ import vi_VN from '@react-pdf-viewer/locales/lib/vi_VN.json';
 import { useFileDownload } from '@/common/hooks';
 import { toast } from 'sonner';
 import Spinner from '@/components/loading/Spinner';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.js?url';
 
 function OutgoingDetailPage() {
     const { id } = useParams();
@@ -43,6 +44,11 @@ function OutgoingDetailPage() {
         theme: 'dark',
         localization: vi_VN,
     });
+
+    const pdfUrl = useMemo(() => {
+        const base = import.meta.env.BASE_URL || '/';
+        return `${base}file/55.pdf`;
+    }, []);
 
     const backPath = useMemo(() => {
         if (year && /^\d{4}$/.test(year)) {
@@ -159,12 +165,12 @@ function OutgoingDetailPage() {
                         </div>
                     </div>
                     {document?.FileName && (
-                        <Worker workerUrl='https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.js'>
+                        <Worker workerUrl={pdfWorkerUrl}>
                             <div style={{ height: '750px' }}>
                                 <Viewer
                                     defaultScale={1.3}
                                     theme='dark'
-                                    fileUrl='/file/55.pdf'
+                                    fileUrl={pdfUrl}
                                     plugins={[defaultLayoutPluginInstance]}
                                     localization={vi_VN}
                                 />
