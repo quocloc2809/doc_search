@@ -40,19 +40,29 @@ const apiRateLimiter = rateLimit({
 });
 app.use('/api/', apiRateLimiter);
 
-// CORS - Allow only production domain in production
+function parseAllowedOrigins(value) {
+    return String(value || '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+}
+
+const configuredOrigins = parseAllowedOrigins(process.env.FRONTEND_URLS || process.env.FRONTEND_URL);
+const devFallbackOrigins = ['http://localhost:5173', 'http://localhost:5174'];
+
+// CORS - Gateway is the single source of truth for browser origins.
 const allowedOrigins = NODE_ENV === 'production'
-    ? [process.env.FRONTEND_URL]
-    : [process.env.FRONTEND_URL || 'http://localhost:5173', 'http://localhost:5174'];
+    ? configuredOrigins
+    : Array.from(new Set([...configuredOrigins, ...devFallbackOrigins]));
 
 // Middleware
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
         }
+
+        return callback(new Error('Not allowed by CORS'));
     },
     credentials: true
 }));
@@ -276,6 +286,15 @@ const proxyOptions = {
             proxyReq.end();
         }
     },
+    onProxyRes: (proxyRes) => {
+        // Downstream services also set CORS and can overwrite gateway headers.
+        // Remove those headers so CORS is consistently controlled at gateway level.
+        delete proxyRes.headers['access-control-allow-origin'];
+        delete proxyRes.headers['access-control-allow-credentials'];
+        delete proxyRes.headers['access-control-allow-methods'];
+        delete proxyRes.headers['access-control-allow-headers'];
+        delete proxyRes.headers['access-control-expose-headers'];
+    },
     onError: (err, req, res) => {
         logger.error(`Proxy error ${req.method} ${req.path}`, { error: err.message });
         res.status(502).json({
@@ -337,6 +356,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     logger.info(`API Gateway started on port ${PORT}`);
     logger.info(`Auth required: ${REQUIRE_AUTH}`);
+    logger.info(`CORS allowed origins: ${allowedOrigins.join(', ') || '(none configured)'}`);
     Object.entries(SERVICES).forEach(([name, url]) => {
         logger.info(`Service ${name}: ${url}`);
     });
