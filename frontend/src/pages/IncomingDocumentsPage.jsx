@@ -8,7 +8,11 @@ import {
 } from '../common/hooks';
 import { CommonTable } from '../common/table';
 import { ErrorMessage, SearchBar } from '../common/ui';
-import { formatDate, normalizeText } from '../common/utils';
+import {
+    buildDocumentDownloadTitle,
+    formatDate,
+    normalizeText,
+} from '../common/utils';
 import './IncomingDocumentsPage.css';
 import { Eye, Download } from 'lucide-react';
 import {
@@ -21,6 +25,7 @@ import { Label } from '@/components/ui/label';
 import CustomSelect from '@/components/custom/CustomSelect';
 import FilterDialog from '@/components/filter/FilterDialog';
 import Spinner from '@/components/loading/Spinner';
+import { toast } from 'sonner';
 
 const SEARCH_FIELDS = [
     { value: 'all', label: 'Tất cả' },
@@ -56,14 +61,26 @@ export default function IncomingDocumentsPage() {
     const [draftFilters, setDraftFilters] = useState(filters);
 
     const handleDownload = useCallback(
-        async (documentId, sourceDb) => {
+        async row => {
             try {
-                await downloadIncomingFile(documentId, sourceDb);
+                const downloadTitle = buildDocumentDownloadTitle(
+                    row?.DocumentNo,
+                    row?.ReceivedDate || row?.CreatedDate,
+                );
+                const selectedYear =
+                    filters.year !== 'all' ? filters.year : undefined;
+
+                await downloadIncomingFile(
+                    row?.DocumentID,
+                    row?.SourceDb,
+                    downloadTitle,
+                    selectedYear,
+                );
             } catch {
                 return null;
             }
         },
-        [downloadIncomingFile],
+        [downloadIncomingFile, filters.year],
     );
 
     const handleOpenFilters = () => {
@@ -115,6 +132,12 @@ export default function IncomingDocumentsPage() {
             return prevYear === filters.year ? prev : { year: filters.year };
         });
     }, [filters.year, searchParams, setSearchParams, setParams]);
+
+    useEffect(() => {
+        if (downloadError) {
+            toast.error(downloadError);
+        }
+    }, [downloadError]);
 
     const handleIncomingDetail = (id, sourceDb) => {
         const next = new URLSearchParams(searchParams);
@@ -245,7 +268,7 @@ export default function IncomingDocumentsPage() {
                         <TooltipTrigger asChild>
                             <Button
                                 disabled={isDownloading}
-                                onClick={() => handleDownload(row.DocumentID, row.SourceDb)}>
+                                onClick={() => handleDownload(row)}>
                                 <Download size={12} />
                             </Button>
                         </TooltipTrigger>
@@ -280,10 +303,10 @@ export default function IncomingDocumentsPage() {
         [yearOptions],
     );
 
-    if (error || departmentsError || downloadError) {
+    if (error || departmentsError) {
         return (
             <ErrorMessage
-                message={error || departmentsError || downloadError}
+                message={error || departmentsError}
             />
         );
     }

@@ -27,17 +27,19 @@ async function downloadFileByPath(path, { params } = {}) {
   }
 }
 
-export async function downloadIncomingFile(documentId, { db, year } = {}) {
+export async function downloadIncomingFile(documentId, { db, year, title } = {}) {
   const params = {}
   if (db) params.db = db
   if (year) params.year = year
+  if (title) params.title = title
   return downloadFileByPath(`/api/files/download/incoming/${documentId}`, { params })
 }
 
-export async function downloadOutgoingFile(documentId, { db, year } = {}) {
+export async function downloadOutgoingFile(documentId, { db, year, title } = {}) {
   const params = {}
   if (db) params.db = db
   if (year) params.year = year
+  if (title) params.title = title
   return downloadFileByPath(`/api/files/download/outgoing/${documentId}`, { params })
 }
 

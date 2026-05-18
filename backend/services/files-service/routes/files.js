@@ -93,6 +93,24 @@ function getClientIp(req) {
     return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
 }
 
+function buildDownloadFileName(title, storedFilePath) {
+    const ext = path.extname(storedFilePath || '');
+    if (title && typeof title === 'string') {
+        const sanitized = title
+            .trim()
+            // Remove characters invalid in filenames on both Windows and Linux
+            .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+            .trim()
+            .slice(0, 200);
+        if (sanitized) {
+            return sanitized + ext;
+        }
+    }
+    // Fallback: strip leading UUID prefix (UUID-originalname.ext)
+    const baseName = path.basename(storedFilePath || '');
+    return baseName.includes('-') ? baseName.substring(baseName.lastIndexOf('-') + 1) : baseName;
+}
+
 // Download file cho Incoming Documents
 router.get('/download/incoming/:documentId', async (req, res) => {
     try {
@@ -141,22 +159,18 @@ router.get('/download/incoming/:documentId', async (req, res) => {
             return res.status(404).json({ success: false, message: 'File not found on server' });
         }
 
-        const baseName = path.basename(fullPath);
-        // Lấy tên file gốc: nếu có UUID-originalname.ext thì lấy originalname.ext
-        const originalFileName = baseName.includes('-') 
-            ? baseName.substring(baseName.lastIndexOf('-') + 1) 
-            : baseName;
+        const downloadFileName = buildDownloadFileName(req.query.title, filePath);
         
-        logger.debug('Serving file', { baseName, originalFileName });
+        logger.debug('Serving file', { downloadFileName });
         
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(originalFileName)}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(downloadFileName)}"`);
 
         const stream = fs.createReadStream(fullPath);
         audit.log('DOWNLOAD_INCOMING_FILE', {
             userId: req.headers['x-user-id'] || null,
             documentId,
-            fileName: originalFileName,
+            fileName: downloadFileName,
             ip: getClientIp(req),
         });
         stream.pipe(res);
@@ -221,22 +235,18 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
             return res.status(404).json({ success: false, message: 'File not found on server' });
         }
 
-        const baseName = path.basename(fullPath);
-        // Lấy tên file gốc: nếu có UUID-originalname.ext thì lấy originalname.ext
-        const originalFileName = baseName.includes('-') 
-            ? baseName.substring(baseName.lastIndexOf('-') + 1) 
-            : baseName;
+        const downloadFileName = buildDownloadFileName(req.query.title, filePath);
         
-        logger.debug('Serving file', { baseName, originalFileName });
+        logger.debug('Serving file', { downloadFileName });
         
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(originalFileName)}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(downloadFileName)}"`);
 
         const stream = fs.createReadStream(fullPath);
         audit.log('DOWNLOAD_OUTGOING_FILE', {
             userId: req.headers['x-user-id'] || null,
             documentId,
-            fileName: originalFileName,
+            fileName: downloadFileName,
             ip: getClientIp(req),
         });
         stream.pipe(res);
@@ -300,22 +310,18 @@ router.get('/download/:documentId', async (req, res) => {
             return res.status(404).json({ success: false, message: 'File not found on server' });
         }
 
-        const baseName = path.basename(fullPath);
-        // Lấy tên file gốc: nếu có UUID-originalname.ext thì lấy originalname.ext
-        const originalFileName = baseName.includes('-') 
-            ? baseName.substring(baseName.lastIndexOf('-') + 1) 
-            : baseName;
+        const downloadFileName = buildDownloadFileName(req.query.title, filePath);
         
-        logger.debug('Serving file', { baseName, originalFileName });
+        logger.debug('Serving file', { downloadFileName });
         
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(originalFileName)}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(downloadFileName)}"`);
 
         const stream = fs.createReadStream(fullPath);
         audit.log('DOWNLOAD_INCOMING_FILE', {
             userId: req.headers['x-user-id'] || null,
             documentId,
-            fileName: originalFileName,
+            fileName: downloadFileName,
             ip: getClientIp(req),
         });
         stream.pipe(res);

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
     Breadcrumb,
@@ -12,15 +12,18 @@ import { APP_ROUTES } from '@/common/routing/routes';
 import { Link } from 'react-router-dom';
 import { Paperclip, Download } from 'lucide-react';
 import { useIncomingDocumentDetail } from '@/common/hooks/useIncomingDocumentDetail';
+import { useFileDownload } from '@/common/hooks';
+import { filesApi } from '@/common/api';
 import { ErrorMessage } from '@/common/ui';
 import Header from '@/common/layout/Header';
-import { formatDate } from '@/common/utils';
+import { buildDocumentDownloadTitle, formatDate } from '@/common/utils';
 import DocumentDetailSkeleton from '@/components/loading/DocumentDetailSkeleton';
 import { Separator } from '@/components/ui/separator';
 import { Viewer, Worker } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import vi_VN from '@react-pdf-viewer/locales/lib/vi_VN.json';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.js?url';
+import { toast } from 'sonner';
 
 function IncomingDetailPage() {
     const { id } = useParams();
@@ -39,6 +42,12 @@ function IncomingDetailPage() {
         detailParams,
     );
 
+    const { isDownloading, downloadIncomingFile } = useFileDownload();
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+    const [previewError, setPreviewError] = useState('');
+    const previewContainerRef = useRef(null);
+
     const backPath = useMemo(() => {
         if (year && /^\d{4}$/.test(year)) {
             return `${APP_ROUTES.INCOMING_DOCUMENTS}?year=${year}`;
@@ -46,17 +55,85 @@ function IncomingDetailPage() {
         return APP_ROUTES.INCOMING_DOCUMENTS;
     }, [year]);
 
+    const downloadTitle = useMemo(
+        () =>
+            buildDocumentDownloadTitle(
+                document?.DocumentNo,
+                document?.ReceivedDate,
+            ),
+        [document?.DocumentNo, document?.ReceivedDate],
+    );
+
     const defaultLayoutPluginInstance = defaultLayoutPlugin({
         theme: 'dark',
         localization: vi_VN,
     });
 
-    const pdfUrl = useMemo(() => {
-        // Vite serves `public/` at `BASE_URL`. Avoid hard-coded absolute paths
-        // so production deployments under a sub-path still work.
-        const base = import.meta.env.BASE_URL || '/';
-        return `${base}file/55.pdf`;
-    }, []);
+    useEffect(() => {
+        let objectUrl = '';
+        let cancelled = false;
+
+        const fetchPreviewFile = async () => {
+            if (!id || !document?.FileName) {
+                setPreviewUrl('');
+                setPreviewError('');
+                return;
+            }
+
+            setIsPreviewLoading(true);
+            setPreviewError('');
+
+            try {
+                const result = await filesApi.downloadIncomingFile(id, {
+                    db,
+                    year,
+                    title: downloadTitle,
+                });
+
+                const contentType = (result?.contentType || '').toLowerCase();
+                if (contentType && !contentType.includes('pdf')) {
+                    setPreviewUrl('');
+                    setPreviewError('Xem trước chỉ hỗ trợ tệp PDF');
+                    return;
+                }
+
+                const extension =
+                    String(result?.fileName || '').match(/(\.[a-z0-9]+)$/i)?.[1] ||
+                    '.pdf';
+                const previewFileName = `${downloadTitle}${extension}`;
+                const previewFile = new File([result.blob], previewFileName, {
+                    type: result?.contentType || result?.blob?.type || 'application/pdf',
+                });
+
+                objectUrl = URL.createObjectURL(previewFile);
+
+                if (cancelled) {
+                    URL.revokeObjectURL(objectUrl);
+                    return;
+                }
+
+                setPreviewUrl(objectUrl);
+            } catch {
+                if (!cancelled) {
+                    setPreviewUrl('');
+                    setPreviewError('Không thể tải file xem trước');
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsPreviewLoading(false);
+                }
+            }
+        };
+
+        fetchPreviewFile();
+
+        return () => {
+            cancelled = true;
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [id, db, year, document?.FileName, downloadTitle]);
 
     const infoFields = useMemo(
         () => [
@@ -80,6 +157,57 @@ function IncomingDetailPage() {
         ],
         [document],
     );
+
+    const handleDownloadClick = useCallback(async () => {
+        try {
+            await downloadIncomingFile(
+                id,
+                db,
+                downloadTitle,
+                year,
+            );
+        } catch (apiError) {
+            const message =
+                apiError?.response?.data?.message || 'Không thể tải file';
+            toast.error(message);
+        }
+    }, [downloadIncomingFile, id, db, downloadTitle, year]);
+
+    useEffect(() => {
+        const container = previewContainerRef.current;
+        if (!container) {
+            return;
+        }
+
+        const onPreviewDownloadClick = event => {
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                return;
+            }
+
+            const downloadButton = target.closest(
+                '[data-testid="get-file__download-button"]',
+            );
+
+            if (!downloadButton) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            handleDownloadClick();
+        };
+
+        container.addEventListener('click', onPreviewDownloadClick, true);
+
+        return () => {
+            container.removeEventListener(
+                'click',
+                onPreviewDownloadClick,
+                true,
+            );
+        };
+    }, [handleDownloadClick, previewUrl]);
 
     if (isLoading) {
         return <DocumentDetailSkeleton />;
@@ -193,7 +321,10 @@ function IncomingDetailPage() {
                                             /[\\/]/,
                                         ).pop() || 'Không có file đính kèm'}
                                     </p>
-                                    <button className='w-full py-2.5 bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 text-white text-sm font-bold rounded-lg transition cursor-pointer border-none'>
+                                    <button
+                                        onClick={handleDownloadClick}
+                                        disabled={isDownloading || !document?.FileName}
+                                        className='w-full py-2.5 bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 text-white text-sm font-bold rounded-lg transition cursor-pointer border-none disabled:opacity-50 disabled:cursor-not-allowed'>
                                         <Download className='inline-block mr-2 h-4 w-4' />
                                         Tải xuống
                                     </button>
@@ -201,20 +332,32 @@ function IncomingDetailPage() {
                             </div>
                         </div>
                         {document?.FileName && (
-                            <div className='mt-4'>
-                                <Worker workerUrl={pdfWorkerUrl}>
-                                    <div style={{ height: '750px' }}>
-                                        <Viewer
-                                            defaultScale={1.3}
-                                            theme='dark'
-                                            fileUrl={pdfUrl}
-                                            plugins={[
-                                                defaultLayoutPluginInstance,
-                                            ]}
-                                            localization={vi_VN}
-                                        />
+                            <div className='mt-4' ref={previewContainerRef}>
+                                {isPreviewLoading && (
+                                    <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-sm text-gray-500'>
+                                        Đang tải file xem trước...
                                     </div>
-                                </Worker>
+                                )}
+                                {!isPreviewLoading && previewError && (
+                                    <div className='bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-sm text-red-600'>
+                                        {previewError}
+                                    </div>
+                                )}
+                                {!isPreviewLoading && !previewError && previewUrl && (
+                                    <Worker workerUrl={pdfWorkerUrl}>
+                                        <div style={{ height: '750px' }}>
+                                            <Viewer
+                                                defaultScale={1.3}
+                                                theme='dark'
+                                                fileUrl={previewUrl}
+                                                plugins={[
+                                                    defaultLayoutPluginInstance,
+                                                ]}
+                                                localization={vi_VN}
+                                            />
+                                        </div>
+                                    </Worker>
+                                )}
                             </div>
                         )}
                     </div>
