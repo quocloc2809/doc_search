@@ -1,22 +1,57 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuditLogs, useDepartments, useToast, useUsers } from '../common/hooks'
 import { logout } from '../common/auth/authService'
-import { Button, ErrorMessage, LoadingSpinner, Toast } from '../common/ui'
+import { Button, ErrorMessage, LoadingSpinner, Pagination, Toast } from '../common/ui'
 import { formatDateTime } from '../common/utils'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import './AdminPage.css'
 
 const EMPTY_FORM = { username: '', password: '', fullName: '', email: '', role: 'user', groupId: '', isActive: true }
 
+function toISODate(value) {
+    return new Date(value).toISOString().slice(0, 10)
+}
+
+function normalizeTab(value) {
+    return value === 'audit' ? 'audit' : 'users'
+}
+
+function normalizeDate(value) {
+    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ''
+}
+
+function normalizePositiveInt(value, fallback) {
+    const parsed = Number(value)
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return fallback
+    }
+    return parsed
+}
+
+const AUDIT_PAGE_SIZE_OPTIONS = [20, 50, 100, 200]
+const DEFAULT_AUDIT_PAGE_SIZE = 20
+
 export default function AdminPage() {
     const navigate = useNavigate()
+    const [searchParams, setSearchParams] = useSearchParams()
     const { users, isLoading, error, createUser, updateUser, deleteUser } = useUsers()
     const { departments } = useDepartments()
     const toast = useToast()
-    const { auditLogs, isLoading: isAuditLoading, error: auditError, meta: auditMeta, refetch: refetchAudit } = useAuditLogs({ limit: 200 })
+    const todayAuditDate = toISODate(new Date())
+    const [selectedAuditDate, setSelectedAuditDate] = useState(
+        normalizeDate(searchParams.get('auditDate')) || todayAuditDate
+    )
+    const { auditLogs, isLoading: isAuditLoading, error: auditError, meta: auditMeta, refetch: refetchAudit } = useAuditLogs({
+        limit: 500,
+        date: selectedAuditDate || undefined,
+    })
 
-    const [activeTab, setActiveTab] = useState('users') // 'users' | 'audit'
+    const [activeTab, setActiveTab] = useState(normalizeTab(searchParams.get('tab'))) // 'users' | 'audit'
+    const [auditPage, setAuditPage] = useState(normalizePositiveInt(searchParams.get('auditPage'), 1))
+    const [auditPageSize, setAuditPageSize] = useState(
+        normalizePositiveInt(searchParams.get('auditPageSize'), DEFAULT_AUDIT_PAGE_SIZE)
+    )
 
     const [modalMode, setModalMode] = useState(null) // 'add' | 'edit'
     const [editTarget, setEditTarget] = useState(null)
@@ -27,6 +62,41 @@ export default function AdminPage() {
     const [deleteTarget, setDeleteTarget] = useState(null)
     const [isDeleting, setIsDeleting] = useState(false)
     const [deleteError, setDeleteError] = useState('')
+
+    useEffect(() => {
+        const query = new URLSearchParams()
+        query.set('tab', activeTab)
+        if (selectedAuditDate) {
+            query.set('auditDate', selectedAuditDate)
+        }
+        query.set('auditPage', String(auditPage))
+        query.set('auditPageSize', String(auditPageSize))
+        setSearchParams(query, { replace: true })
+    }, [activeTab, auditPage, auditPageSize, selectedAuditDate, setSearchParams])
+
+    useEffect(() => {
+        setAuditPage(1)
+    }, [selectedAuditDate])
+
+    const totalAuditItems = auditLogs.length
+    const totalAuditPages = Math.max(1, Math.ceil(totalAuditItems / auditPageSize))
+
+    useEffect(() => {
+        if (auditPage > totalAuditPages) {
+            setAuditPage(totalAuditPages)
+        }
+    }, [auditPage, totalAuditPages])
+
+    const pagedAuditLogs = useMemo(() => {
+        const safePage = Math.min(Math.max(1, auditPage), totalAuditPages)
+        const start = (safePage - 1) * auditPageSize
+        const end = start + auditPageSize
+        return auditLogs.slice(start, end)
+    }, [auditLogs, auditPage, auditPageSize, totalAuditPages])
+
+    const availableDates = auditMeta?.availableDates || []
+    const minAuditDate = availableDates.length > 0 ? availableDates[0] : undefined
+    const maxAuditDate = availableDates.length > 0 ? availableDates[availableDates.length - 1] : undefined
 
     const openAdd = () => {
         setForm(EMPTY_FORM)
@@ -164,7 +234,7 @@ export default function AdminPage() {
                         </div>
                     </div>
 
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className='w-full flex flex-col flex-1'>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className='admin-tabs w-full flex flex-col flex-1'>
                         <TabsList variant='line' className='bg-background rounded-none border-b p-0'>
                             <TabsTrigger value='users' className='w-full'>
                                 Tài khoản
@@ -174,7 +244,7 @@ export default function AdminPage() {
                             </TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value='users' className='flex-1'>
+                        <TabsContent value='users' className='flex-1 min-h-0'>
                             {error && <ErrorMessage message={error} />}
 
                             {isLoading ? (
@@ -240,7 +310,38 @@ export default function AdminPage() {
                             )}
                         </TabsContent>
 
-                        <TabsContent value='audit' className='flex-1'>
+                        <TabsContent value='audit' className='flex flex-1 min-h-0 flex-col'>
+                            <div className='admin-audit-toolbar'>
+                                <label htmlFor='audit-date-picker'>Ngày log</label>
+                                <input
+                                    id='audit-date-picker'
+                                    type='date'
+                                    value={selectedAuditDate}
+                                    min={minAuditDate}
+                                    max={maxAuditDate}
+                                    onChange={e => setSelectedAuditDate(e.target.value)}
+                                />
+                                <Button
+                                    className='common-button-ghost'
+                                    onClick={() => setSelectedAuditDate(todayAuditDate)}
+                                    disabled={isAuditLoading}
+                                >
+                                    Hôm nay
+                                </Button>
+                                <Button
+                                    className='common-button-ghost'
+                                    onClick={() => setSelectedAuditDate('')}
+                                    disabled={isAuditLoading || !selectedAuditDate}
+                                >
+                                    Tất cả ngày
+                                </Button>
+                                <span className='admin-audit-toolbar-meta'>
+                                    {selectedAuditDate
+                                        ? `Đang xem ngày ${selectedAuditDate}`
+                                        : 'Đang xem log mới nhất qua nhiều ngày'}
+                                </span>
+                            </div>
+
                             {auditError && <ErrorMessage message={auditError} />}
 
                             {isAuditLoading ? (
@@ -265,7 +366,7 @@ export default function AdminPage() {
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                auditLogs.map((item, index) => {
+                                                pagedAuditLogs.map((item, index) => {
                                                     const { timestamp, action, ip, username, adminUsername, userId, adminId, ...rest } = item || {}
                                                     const displayUser = adminUsername || username || (adminId != null ? `adminId:${adminId}` : '') || (userId != null ? `userId:${userId}` : '') || '-'
                                                     const displayIp = ip || '-'
@@ -273,18 +374,34 @@ export default function AdminPage() {
                                                     const detailText = detailObj ? JSON.stringify(detailObj) : '-'
 
                                                     return (
-                                                        <tr key={`${timestamp || 't'}-${index}`}>
+                                                        <tr key={`${timestamp || 't'}-${(auditPage - 1) * auditPageSize + index}`}>
                                                             <td>{timestamp ? formatDateTime(timestamp) : '-'}</td>
                                                             <td>{action || '-'}</td>
                                                             <td>{displayUser}</td>
                                                             <td>{displayIp}</td>
-                                                            <td style={{ maxWidth: 520, whiteSpace: 'normal' }}>{detailText}</td>
+                                                            <td className='admin-audit-detail-cell'>{detailText}</td>
                                                         </tr>
                                                     )
                                                 })
                                             )}
                                         </tbody>
                                     </table>
+                                </div>
+                            )}
+
+                            {!isAuditLoading && auditLogs.length > 0 && (
+                                <div className='admin-audit-pagination'>
+                                    <Pagination
+                                        page={auditPage}
+                                        pageSize={auditPageSize}
+                                        totalItems={auditLogs.length}
+                                        onPageChange={setAuditPage}
+                                        onPageSizeChange={(size) => {
+                                            setAuditPageSize(size)
+                                            setAuditPage(1)
+                                        }}
+                                        pageSizeOptions={AUDIT_PAGE_SIZE_OPTIONS}
+                                    />
                                 </div>
                             )}
                         </TabsContent>

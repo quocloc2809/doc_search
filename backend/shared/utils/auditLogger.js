@@ -18,6 +18,7 @@ const path = require('path');
 
 const LOG_ROOT = process.env.LOG_DIR || path.join(__dirname, '..', '..', 'logs');
 const auditDir = path.join(LOG_ROOT, 'audit');
+const auditMaxFiles = process.env.AUDIT_MAX_FILES;
 
 const auditLogger = winston.createLogger({
     level: 'info',
@@ -27,7 +28,8 @@ const auditLogger = winston.createLogger({
             dirname: auditDir,
             filename: 'audit-%DATE%.log',
             datePattern: 'YYYY-MM-DD',
-            maxFiles: '180d',
+            // Keep full audit history by default; set AUDIT_MAX_FILES only when needed.
+            ...(auditMaxFiles ? { maxFiles: auditMaxFiles } : {}),
             format: winston.format.combine(
                 winston.format.timestamp(),
                 winston.format.json()

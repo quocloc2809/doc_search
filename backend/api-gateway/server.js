@@ -96,6 +96,7 @@ function verifyAccessToken(req, res, next) {
         req.user = jwt.verify(token, JWT_SECRET);
         // Forward user info as headers to downstream microservices
         req.headers['x-user-id'] = String(req.user.userId || '');
+        req.headers['x-user-name'] = String(req.user.username || '');
         req.headers['x-user-role'] = String(req.user.role || '');
         req.headers['x-user-group-id'] = req.user.groupId != null ? String(req.user.groupId) : '';
         return next();
@@ -133,6 +134,26 @@ function isValidAuditDate(date) {
     return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date);
 }
 
+async function listAuditLogFilesSorted() {
+    try {
+        const entries = await fs.promises.readdir(AUDIT_DIR, { withFileTypes: true });
+        return entries
+            .filter((e) => e.isFile())
+            .map((e) => e.name)
+            .filter((name) => /^audit-\d{4}-\d{2}-\d{2}\.log$/.test(name))
+            .sort();
+    } catch (err) {
+        if (err && err.code === 'ENOENT') {
+            return [];
+        }
+        throw err;
+    }
+}
+
+function fileNameToAuditDate(fileName) {
+    return fileName.slice('audit-'.length, 'audit-YYYY-MM-DD'.length);
+}
+
 async function resolveAuditLogFilePath(date) {
     if (date) {
         if (!isValidAuditDate(date)) {
@@ -142,27 +163,14 @@ async function resolveAuditLogFilePath(date) {
         return { filePath: path.join(AUDIT_DIR, `audit-${date}.log`), date };
     }
 
-    try {
-        const entries = await fs.promises.readdir(AUDIT_DIR, { withFileTypes: true });
-        const files = entries
-            .filter((e) => e.isFile())
-            .map((e) => e.name)
-            .filter((name) => /^audit-\d{4}-\d{2}-\d{2}\.log$/.test(name))
-            .sort();
-
-        const latest = files[files.length - 1];
-        if (!latest) {
-            return { filePath: null, date: null };
-        }
-
-        const latestDate = latest.slice('audit-'.length, 'audit-YYYY-MM-DD'.length);
-        return { filePath: path.join(AUDIT_DIR, latest), date: latestDate };
-    } catch (err) {
-        if (err && err.code === 'ENOENT') {
-            return { filePath: null, date: null };
-        }
-        throw err;
+    const files = await listAuditLogFilesSorted();
+    const latest = files[files.length - 1];
+    if (!latest) {
+        return { filePath: null, date: null };
     }
+
+    const latestDate = fileNameToAuditDate(latest);
+    return { filePath: path.join(AUDIT_DIR, latest), date: latestDate };
 }
 
 function parseJsonLine(line) {
@@ -237,34 +245,94 @@ app.get('/api/audit', verifyAccessToken, requireAdmin, async (req, res, next) =>
         const date = req.query.date;
         const limitRaw = req.query.limit;
         const limit = Math.max(1, Math.min(Number(limitRaw || 200), 1000));
+        const files = await listAuditLogFilesSorted();
+        const availableDates = files.map(fileNameToAuditDate);
 
-        const resolved = await resolveAuditLogFilePath(date);
-        if (resolved.error) {
-            return res.status(400).json({ success: false, message: resolved.error });
-        }
-
-        if (!resolved.filePath) {
-            return res.json({ success: true, data: [], meta: { date: resolved.date } });
-        }
-
-        let content;
-        try {
-            content = await fs.promises.readFile(resolved.filePath, 'utf8');
-        } catch (err) {
-            if (err && err.code === 'ENOENT') {
-                return res.json({ success: true, data: [], meta: { date: resolved.date } });
+        // Specific date: keep old behavior and read a single date file.
+        if (date) {
+            const resolved = await resolveAuditLogFilePath(date);
+            if (resolved.error) {
+                return res.status(400).json({ success: false, message: resolved.error });
             }
-            throw err;
+
+            let content;
+            try {
+                content = await fs.promises.readFile(resolved.filePath, 'utf8');
+            } catch (err) {
+                if (err && err.code === 'ENOENT') {
+                    return res.json({ success: true, data: [], meta: { date: resolved.date } });
+                }
+                throw err;
+            }
+
+            const lines = content.split(/\r?\n/).filter(Boolean);
+            const items = lines
+                .slice(-limit)
+                .map(parseJsonLine)
+                .filter(Boolean)
+                .reverse();
+
+            return res.json({
+                success: true,
+                data: items,
+                meta: {
+                    date: resolved.date,
+                    mode: 'by-date',
+                    availableDates,
+                },
+            });
         }
 
-        const lines = content.split(/\r?\n/).filter(Boolean);
-        const tailLines = lines.slice(-limit);
-        const items = tailLines
-            .map(parseJsonLine)
-            .filter(Boolean)
-            .reverse();
+        // Default mode: aggregate newest records across all rotated date files.
+        if (files.length === 0) {
+            return res.json({
+                success: true,
+                data: [],
+                meta: {
+                    date: null,
+                    mode: 'latest-across-files',
+                    availableDates,
+                },
+            });
+        }
 
-        return res.json({ success: true, data: items, meta: { date: resolved.date } });
+        const items = [];
+        let scannedFiles = 0;
+
+        for (let i = files.length - 1; i >= 0 && items.length < limit; i -= 1) {
+            const fileName = files[i];
+            const filePath = path.join(AUDIT_DIR, fileName);
+            scannedFiles += 1;
+
+            let content;
+            try {
+                content = await fs.promises.readFile(filePath, 'utf8');
+            } catch (err) {
+                if (err && err.code === 'ENOENT') {
+                    continue;
+                }
+                throw err;
+            }
+
+            const lines = content.split(/\r?\n/).filter(Boolean);
+            for (let lineIndex = lines.length - 1; lineIndex >= 0 && items.length < limit; lineIndex -= 1) {
+                const parsed = parseJsonLine(lines[lineIndex]);
+                if (parsed) {
+                    items.push(parsed);
+                }
+            }
+        }
+
+        return res.json({
+            success: true,
+            data: items,
+            meta: {
+                date: fileNameToAuditDate(files[files.length - 1]),
+                mode: 'latest-across-files',
+                scannedFiles,
+                availableDates,
+            },
+        });
     } catch (err) {
         return next(err);
     }

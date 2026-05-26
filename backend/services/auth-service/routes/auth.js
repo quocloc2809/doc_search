@@ -536,7 +536,7 @@ router.post('/change-password', async (req, res) => {
             .request()
             .input('userId', sql.Int, userId)
             .query(
-                'SELECT PasswordHash, Salt FROM dbo.Users WHERE UserID = @userId',
+                'SELECT Username, PasswordHash, Salt FROM dbo.Users WHERE UserID = @userId',
             );
 
         if (!result.recordset || result.recordset.length === 0) {
@@ -569,7 +569,11 @@ router.post('/change-password', async (req, res) => {
                 WHERE UserID = @userId
             `);
 
-        audit.log('CHANGE_PASSWORD', { userId, ip: getClientIp(req) });
+        audit.log('CHANGE_PASSWORD', {
+            userId,
+            username: user.Username || null,
+            ip: getClientIp(req),
+        });
         res.json({
             success: true,
             message: 'Đổi mật khẩu thành công',

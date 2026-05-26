@@ -169,6 +169,7 @@ router.get('/download/incoming/:documentId', async (req, res) => {
         const stream = fs.createReadStream(fullPath);
         audit.log('DOWNLOAD_INCOMING_FILE', {
             userId: req.headers['x-user-id'] || null,
+            username: req.headers['x-user-name'] || null,
             documentId,
             fileName: downloadFileName,
             ip: getClientIp(req),
@@ -245,6 +246,7 @@ router.get('/download/outgoing/:documentId', async (req, res) => {
         const stream = fs.createReadStream(fullPath);
         audit.log('DOWNLOAD_OUTGOING_FILE', {
             userId: req.headers['x-user-id'] || null,
+            username: req.headers['x-user-name'] || null,
             documentId,
             fileName: downloadFileName,
             ip: getClientIp(req),
@@ -320,6 +322,7 @@ router.get('/download/:documentId', async (req, res) => {
         const stream = fs.createReadStream(fullPath);
         audit.log('DOWNLOAD_INCOMING_FILE', {
             userId: req.headers['x-user-id'] || null,
+            username: req.headers['x-user-name'] || null,
             documentId,
             fileName: downloadFileName,
             ip: getClientIp(req),
