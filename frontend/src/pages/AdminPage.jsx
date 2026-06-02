@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuditLogs, useDepartments, useToast, useUsers } from '../common/hooks'
 import { logout } from '../common/auth/authService'
-import { Button, ErrorMessage, LoadingSpinner, Pagination, Toast } from '../common/ui'
+import { Button, ErrorMessage, LoadingSpinner, Pagination, SearchBar, Toast } from '../common/ui'
 import { formatDateTime } from '../common/utils'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import './AdminPage.css'
@@ -32,6 +32,10 @@ function normalizePositiveInt(value, fallback) {
 const AUDIT_PAGE_SIZE_OPTIONS = [20, 50, 100, 200]
 const DEFAULT_AUDIT_PAGE_SIZE = 20
 
+function toSearchableText(value) {
+    return String(value || '').toLowerCase().trim()
+}
+
 export default function AdminPage() {
     const navigate = useNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
@@ -52,6 +56,8 @@ export default function AdminPage() {
     const [auditPageSize, setAuditPageSize] = useState(
         normalizePositiveInt(searchParams.get('auditPageSize'), DEFAULT_AUDIT_PAGE_SIZE)
     )
+    const [usersKeyword, setUsersKeyword] = useState(searchParams.get('usersQ') || '')
+    const [auditKeyword, setAuditKeyword] = useState(searchParams.get('auditQ') || '')
 
     const [modalMode, setModalMode] = useState(null) // 'add' | 'edit'
     const [editTarget, setEditTarget] = useState(null)
@@ -69,16 +75,70 @@ export default function AdminPage() {
         if (selectedAuditDate) {
             query.set('auditDate', selectedAuditDate)
         }
+        if (usersKeyword.trim()) {
+            query.set('usersQ', usersKeyword.trim())
+        }
+        if (auditKeyword.trim()) {
+            query.set('auditQ', auditKeyword.trim())
+        }
         query.set('auditPage', String(auditPage))
         query.set('auditPageSize', String(auditPageSize))
         setSearchParams(query, { replace: true })
-    }, [activeTab, auditPage, auditPageSize, selectedAuditDate, setSearchParams])
+    }, [activeTab, auditKeyword, auditPage, auditPageSize, selectedAuditDate, setSearchParams, usersKeyword])
 
     useEffect(() => {
         setAuditPage(1)
     }, [selectedAuditDate])
 
-    const totalAuditItems = auditLogs.length
+    const filteredUsers = useMemo(() => {
+        const keyword = toSearchableText(usersKeyword)
+        if (!keyword) {
+            return users
+        }
+
+        return users.filter((user) => {
+            const roleText = user?.Role === 'admin' ? 'admin' : 'user'
+            const statusText = user?.IsActive ? 'hoat dong active' : 'vo hieu inactive'
+            const searchable = [
+                user?.Username,
+                user?.FullName,
+                user?.Email,
+                user?.GroupName,
+                roleText,
+                statusText,
+            ]
+                .map(toSearchableText)
+                .join(' ')
+
+            return searchable.includes(keyword)
+        })
+    }, [users, usersKeyword])
+
+    const filteredAuditLogs = useMemo(() => {
+        const keyword = toSearchableText(auditKeyword)
+        if (!keyword) {
+            return auditLogs
+        }
+
+        return auditLogs.filter((item) => {
+            const { timestamp, action, ip, username, adminUsername, userId, adminId, ...rest } = item || {}
+            const displayUser = adminUsername || username || (adminId != null ? `adminId:${adminId}` : '') || (userId != null ? `userId:${userId}` : '') || '-'
+            const detailObj = Object.keys(rest || {}).length ? rest : null
+            const detailText = detailObj ? JSON.stringify(detailObj) : ''
+
+            const searchable = [timestamp, action, ip, displayUser, detailText]
+                .map(toSearchableText)
+                .join(' ')
+
+            return searchable.includes(keyword)
+        })
+    }, [auditKeyword, auditLogs])
+
+    useEffect(() => {
+        setAuditPage(1)
+    }, [auditKeyword])
+
+    const totalAuditItems = filteredAuditLogs.length
     const totalAuditPages = Math.max(1, Math.ceil(totalAuditItems / auditPageSize))
 
     useEffect(() => {
@@ -91,8 +151,8 @@ export default function AdminPage() {
         const safePage = Math.min(Math.max(1, auditPage), totalAuditPages)
         const start = (safePage - 1) * auditPageSize
         const end = start + auditPageSize
-        return auditLogs.slice(start, end)
-    }, [auditLogs, auditPage, auditPageSize, totalAuditPages])
+        return filteredAuditLogs.slice(start, end)
+    }, [auditPage, auditPageSize, filteredAuditLogs, totalAuditPages])
 
     const availableDates = auditMeta?.availableDates || []
     const minAuditDate = availableDates.length > 0 ? availableDates[0] : undefined
@@ -245,6 +305,17 @@ export default function AdminPage() {
                         </TabsList>
 
                         <TabsContent value='users' className='flex-1 min-h-0'>
+                            <div className='admin-users-toolbar'>
+                                <SearchBar
+                                    value={usersKeyword}
+                                    onLiveSearch={(keyword) => setUsersKeyword(keyword)}
+                                    placeholder='Tìm tài khoản theo username, họ tên, email...'
+                                />
+                                <span className='admin-users-toolbar-meta'>
+                                    {`Hiển thị ${filteredUsers.length} / ${users.length} tài khoản`}
+                                </span>
+                            </div>
+
                             {error && <ErrorMessage message={error} />}
 
                             {isLoading ? (
@@ -266,14 +337,14 @@ export default function AdminPage() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {users.length === 0 ? (
+                                            {filteredUsers.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={9} className='admin-table-empty'>
                                                         Không có dữ liệu
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                users.map((user, index) => (
+                                                filteredUsers.map((user, index) => (
                                                     <tr key={user.UserID}>
                                                         <td>{index + 1}</td>
                                                         <td>{user.Username}</td>
@@ -342,6 +413,17 @@ export default function AdminPage() {
                                 </span>
                             </div>
 
+                            <div className='admin-audit-searchbar'>
+                                <SearchBar
+                                    value={auditKeyword}
+                                    onLiveSearch={(keyword) => setAuditKeyword(keyword)}
+                                    placeholder='Tìm trong action, user, IP, chi tiết...'
+                                />
+                                <span className='admin-audit-searchbar-meta'>
+                                    {`Hiển thị ${filteredAuditLogs.length} / ${auditLogs.length} logs`}
+                                </span>
+                            </div>
+
                             {auditError && <ErrorMessage message={auditError} />}
 
                             {isAuditLoading ? (
@@ -359,7 +441,7 @@ export default function AdminPage() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {auditLogs.length === 0 ? (
+                                            {filteredAuditLogs.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={5} className='admin-table-empty'>
                                                         Không có dữ liệu{auditMeta?.date ? ` (${auditMeta.date})` : ''}
@@ -394,7 +476,7 @@ export default function AdminPage() {
                                     <Pagination
                                         page={auditPage}
                                         pageSize={auditPageSize}
-                                        totalItems={auditLogs.length}
+                                        totalItems={filteredAuditLogs.length}
                                         onPageChange={setAuditPage}
                                         onPageSizeChange={(size) => {
                                             setAuditPageSize(size)

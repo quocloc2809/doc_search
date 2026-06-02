@@ -46,6 +46,25 @@
   min-height: 0;
 }
 
+.admin-users-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-users-toolbar .common-searchbar {
+  margin-bottom: 0;
+  flex: 1 1 360px;
+}
+
+.admin-users-toolbar-meta {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
 .admin-audit-toolbar {
   display: flex;
   align-items: center;
@@ -71,6 +90,25 @@
 }
 
 .admin-audit-toolbar-meta {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.admin-audit-searchbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-audit-searchbar .common-searchbar {
+  margin-bottom: 0;
+  flex: 1 1 360px;
+}
+
+.admin-audit-searchbar-meta {
   margin-left: auto;
   font-size: 0.8rem;
   color: #64748b;
