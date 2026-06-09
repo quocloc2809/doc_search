@@ -52,6 +52,19 @@ function parseRowDate(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function toDateKey(value) {
+    const date = parseRowDate(value);
+    if (!date) {
+        return '';
+    }
+
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+}
+
 export default function IncomingDocumentsPage() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -76,8 +89,7 @@ export default function IncomingDocumentsPage() {
     const [filters, setFilters] = useState(() => ({
         department: 'all',
         year: initialYear || 'all',
-        fromDate: '',
-        toDate: '',
+        date: '',
     }));
     const [draftFilters, setDraftFilters] = useState(filters);
 
@@ -200,8 +212,7 @@ export default function IncomingDocumentsPage() {
 
     const filteredDocuments = useMemo(() => {
         const keyword = normalizeText(searchKeyword).toLowerCase();
-        const fromDate = parseDateOnly(filters.fromDate);
-        const toDate = parseDateOnly(filters.toDate);
+        const selectedDate = parseDateOnly(filters.date);
 
         return documents.filter(row => {
             const createdDate = new Date(row?.CreatedDate);
@@ -210,6 +221,7 @@ export default function IncomingDocumentsPage() {
                 : String(createdDate.getFullYear());
             const rowDepartmentId = String(Math.abs(row?.AssignedGroupID ?? 0));
             const rowDate = parseRowDate(row?.ReceivedDate || row?.CreatedDate);
+            const rowDateKey = toDateKey(row?.ReceivedDate || row?.CreatedDate);
 
             const matchesDepartment =
                 filters.department === 'all'
@@ -237,15 +249,9 @@ export default function IncomingDocumentsPage() {
                   )
                 : true;
 
-            const matchesFromDate = fromDate
+            const matchesDate = selectedDate
                 ? rowDate
-                    ? rowDate >= fromDate
-                    : false
-                : true;
-
-            const matchesToDate = toDate
-                ? rowDate
-                    ? rowDate <= toDate
+                    ? rowDateKey === filters.date
                     : false
                 : true;
 
@@ -253,15 +259,13 @@ export default function IncomingDocumentsPage() {
                 matchesDepartment &&
                 matchesYear &&
                 matchesKeyword &&
-                matchesFromDate &&
-                matchesToDate
+                matchesDate
             );
         });
     }, [
         documents,
         filters.department,
-        filters.fromDate,
-        filters.toDate,
+        filters.date,
         filters.year,
         searchKeyword,
         searchField,
@@ -395,27 +399,15 @@ export default function IncomingDocumentsPage() {
                                 }
                                 value={String(draftFilters.year)}
                             />
-                            <Label htmlFor='filter-from-date'>Từ ngày</Label>
+                            <Label htmlFor='filter-date'>Ngày</Label>
                             <Input
-                                id='filter-from-date'
+                                id='filter-date'
                                 type='date'
-                                value={draftFilters.fromDate}
+                                value={draftFilters.date}
                                 onChange={event =>
                                     setDraftFilters(prev => ({
                                         ...prev,
-                                        fromDate: event.target.value,
-                                    }))
-                                }
-                            />
-                            <Label htmlFor='filter-to-date'>Đến ngày</Label>
-                            <Input
-                                id='filter-to-date'
-                                type='date'
-                                value={draftFilters.toDate}
-                                onChange={event =>
-                                    setDraftFilters(prev => ({
-                                        ...prev,
-                                        toDate: event.target.value,
+                                        date: event.target.value,
                                     }))
                                 }
                             />
@@ -441,7 +433,7 @@ export default function IncomingDocumentsPage() {
                     {' | '}
                     Ngày:{' '}
                     <strong>
-                        {filters.fromDate || '...'} - {filters.toDate || '...'}
+                        {filters.date || 'Tất cả'}
                     </strong>
                 </div>
             </div>
