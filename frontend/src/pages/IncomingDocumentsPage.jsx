@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import CustomSelect from '@/components/custom/CustomSelect';
 import FilterDialog from '@/components/filter/FilterDialog';
 import Spinner from '@/components/loading/Spinner';
@@ -32,6 +33,24 @@ const SEARCH_FIELDS = [
     { value: 'DocumentNo', label: 'Số hiệu' },
     { value: 'DocumentSummary', label: 'Trích yếu' },
 ];
+
+function parseDateOnly(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return null;
+    }
+
+    const parsed = new Date(`${value}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseRowDate(value) {
+    if (!value) {
+        return null;
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 export default function IncomingDocumentsPage() {
     const navigate = useNavigate();
@@ -57,6 +76,8 @@ export default function IncomingDocumentsPage() {
     const [filters, setFilters] = useState(() => ({
         department: 'all',
         year: initialYear || 'all',
+        fromDate: '',
+        toDate: '',
     }));
     const [draftFilters, setDraftFilters] = useState(filters);
 
@@ -179,6 +200,8 @@ export default function IncomingDocumentsPage() {
 
     const filteredDocuments = useMemo(() => {
         const keyword = normalizeText(searchKeyword).toLowerCase();
+        const fromDate = parseDateOnly(filters.fromDate);
+        const toDate = parseDateOnly(filters.toDate);
 
         return documents.filter(row => {
             const createdDate = new Date(row?.CreatedDate);
@@ -186,6 +209,7 @@ export default function IncomingDocumentsPage() {
                 ? ''
                 : String(createdDate.getFullYear());
             const rowDepartmentId = String(Math.abs(row?.AssignedGroupID ?? 0));
+            const rowDate = parseRowDate(row?.ReceivedDate || row?.CreatedDate);
 
             const matchesDepartment =
                 filters.department === 'all'
@@ -213,11 +237,31 @@ export default function IncomingDocumentsPage() {
                   )
                 : true;
 
-            return matchesDepartment && matchesYear && matchesKeyword;
+            const matchesFromDate = fromDate
+                ? rowDate
+                    ? rowDate >= fromDate
+                    : false
+                : true;
+
+            const matchesToDate = toDate
+                ? rowDate
+                    ? rowDate <= toDate
+                    : false
+                : true;
+
+            return (
+                matchesDepartment &&
+                matchesYear &&
+                matchesKeyword &&
+                matchesFromDate &&
+                matchesToDate
+            );
         });
     }, [
         documents,
         filters.department,
+        filters.fromDate,
+        filters.toDate,
         filters.year,
         searchKeyword,
         searchField,
@@ -351,6 +395,30 @@ export default function IncomingDocumentsPage() {
                                 }
                                 value={String(draftFilters.year)}
                             />
+                            <Label htmlFor='filter-from-date'>Từ ngày</Label>
+                            <Input
+                                id='filter-from-date'
+                                type='date'
+                                value={draftFilters.fromDate}
+                                onChange={event =>
+                                    setDraftFilters(prev => ({
+                                        ...prev,
+                                        fromDate: event.target.value,
+                                    }))
+                                }
+                            />
+                            <Label htmlFor='filter-to-date'>Đến ngày</Label>
+                            <Input
+                                id='filter-to-date'
+                                type='date'
+                                value={draftFilters.toDate}
+                                onChange={event =>
+                                    setDraftFilters(prev => ({
+                                        ...prev,
+                                        toDate: event.target.value,
+                                    }))
+                                }
+                            />
                         </div>
                     </FilterDialog>
                 </div>
@@ -369,6 +437,11 @@ export default function IncomingDocumentsPage() {
                     Năm:{' '}
                     <strong>
                         {filters.year === 'all' ? 'Tất cả' : filters.year}
+                    </strong>
+                    {' | '}
+                    Ngày:{' '}
+                    <strong>
+                        {filters.fromDate || '...'} - {filters.toDate || '...'}
                     </strong>
                 </div>
             </div>
