@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     useDepartments,
@@ -14,7 +14,7 @@ import {
     normalizeText,
 } from '../common/utils';
 import './IncomingDocumentsPage.css';
-import { Eye, Download } from 'lucide-react';
+import { Eye, Download, FileDown, CheckSquare } from 'lucide-react';
 import {
     Tooltip,
     TooltipContent,
@@ -34,15 +34,6 @@ const SEARCH_FIELDS = [
     { value: 'DocumentSummary', label: 'Trích yếu' },
 ];
 
-function parseDateOnly(value) {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        return null;
-    }
-
-    const parsed = new Date(`${value}T00:00:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
 function parseRowDate(value) {
     if (!value) {
         return null;
@@ -50,19 +41,6 @@ function parseRowDate(value) {
 
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function toDateKey(value) {
-    const date = parseRowDate(value);
-    if (!date) {
-        return '';
-    }
-
-    return [
-        date.getFullYear(),
-        String(date.getMonth() + 1).padStart(2, '0'),
-        String(date.getDate()).padStart(2, '0'),
-    ].join('-');
 }
 
 export default function IncomingDocumentsPage() {
@@ -89,9 +67,13 @@ export default function IncomingDocumentsPage() {
     const [filters, setFilters] = useState(() => ({
         department: 'all',
         year: initialYear || 'all',
-        date: '',
+        dateDay: '',
+        dateMonth: '',
+        dateYear: '',
     }));
     const [draftFilters, setDraftFilters] = useState(filters);
+    const [selectedIds, setSelectedIds] = useState(() => new Set());
+    const [isBulkDownloading, setIsBulkDownloading] = useState(false);
 
     const handleDownload = useCallback(
         async row => {
@@ -212,7 +194,6 @@ export default function IncomingDocumentsPage() {
 
     const filteredDocuments = useMemo(() => {
         const keyword = normalizeText(searchKeyword).toLowerCase();
-        const selectedDate = parseDateOnly(filters.date);
 
         return documents.filter(row => {
             const createdDate = new Date(row?.CreatedDate);
@@ -221,7 +202,6 @@ export default function IncomingDocumentsPage() {
                 : String(createdDate.getFullYear());
             const rowDepartmentId = String(Math.abs(row?.AssignedGroupID ?? 0));
             const rowDate = parseRowDate(row?.ReceivedDate || row?.CreatedDate);
-            const rowDateKey = toDateKey(row?.ReceivedDate || row?.CreatedDate);
 
             const matchesDepartment =
                 filters.department === 'all'
@@ -249,9 +229,22 @@ export default function IncomingDocumentsPage() {
                   )
                 : true;
 
-            const matchesDate = selectedDate
+            const hasDateFilter =
+                filters.dateDay || filters.dateMonth || filters.dateYear;
+            const matchesDate = hasDateFilter
                 ? rowDate
-                    ? rowDateKey === filters.date
+                    ? (filters.dateDay
+                          ? rowDate.getDate() ===
+                            parseInt(filters.dateDay, 10)
+                          : true) &&
+                      (filters.dateMonth
+                          ? rowDate.getMonth() + 1 ===
+                            parseInt(filters.dateMonth, 10)
+                          : true) &&
+                      (filters.dateYear
+                          ? rowDate.getFullYear() ===
+                            parseInt(filters.dateYear, 10)
+                          : true)
                     : false
                 : true;
 
@@ -265,13 +258,152 @@ export default function IncomingDocumentsPage() {
     }, [
         documents,
         filters.department,
-        filters.date,
+        filters.dateDay,
+        filters.dateMonth,
+        filters.dateYear,
         filters.year,
         searchKeyword,
         searchField,
     ]);
 
+    const handleExport = useCallback(() => {
+        if (filteredDocuments.length === 0) {
+            toast.error('Không có dữ liệu để xuất');
+            return;
+        }
+        const headers = [
+            'Số hiệu',
+            'Trích yếu',
+            'Ngày đến',
+            'Ban hành',
+            'Lãnh đạo bút phê',
+            'Đơn vị xử lý chính',
+        ];
+        const escape = val =>
+            `"${String(val || '').replace(/"/g, '""')}"`;
+        const csvRows = [
+            headers.join(','),
+            ...filteredDocuments.map(row =>
+                [
+                    escape(row.DocumentNo),
+                    escape(row.DocumentSummary),
+                    escape(formatDate(row.ReceivedDate)),
+                    escape(row.IssuedOrganizationName),
+                    escape(row.LeaderName),
+                    escape(row.GroupName),
+                ].join(','),
+            ),
+        ];
+        const csvContent = '\uFEFF' + csvRows.join('\n');
+        const blob = new Blob([csvContent], {
+            type: 'text/csv;charset=utf-8',
+        });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `danh-sach-van-ban-den-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+    }, [filteredDocuments]);
+
+    const allFilteredIds = useMemo(
+        () => filteredDocuments.map(doc => doc.DocumentID),
+        [filteredDocuments],
+    );
+
+    const allSelected =
+        allFilteredIds.length > 0 &&
+        allFilteredIds.every(id => selectedIds.has(id));
+    const someSelected =
+        !allSelected && allFilteredIds.some(id => selectedIds.has(id));
+    const selectedCount = allFilteredIds.filter(id =>
+        selectedIds.has(id),
+    ).length;
+
+    const handleToggleSelect = useCallback(id => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    }, []);
+
+    const handleSelectAll = useCallback(() => {
+        if (allSelected) {
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                allFilteredIds.forEach(id => next.delete(id));
+                return next;
+            });
+        } else {
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                allFilteredIds.forEach(id => next.add(id));
+                return next;
+            });
+        }
+    }, [allSelected, allFilteredIds]);
+
+    const handleBulkDownload = useCallback(async () => {
+        const selectedDocs = filteredDocuments.filter(doc =>
+            selectedIds.has(doc.DocumentID),
+        );
+        if (selectedDocs.length === 0) {
+            toast.error('Chưa chọn văn bản nào');
+            return;
+        }
+        setIsBulkDownloading(true);
+        let successCount = 0;
+        for (const doc of selectedDocs) {
+            try {
+                await handleDownload(doc);
+                successCount += 1;
+            } catch {
+                // continue downloading remaining files
+            }
+        }
+        setIsBulkDownloading(false);
+        toast.success(`Đã tải ${successCount}/${selectedDocs.length} văn bản`);
+    }, [filteredDocuments, selectedIds, handleDownload]);
+
+    const selectAllRef = useRef(null);
+    useEffect(() => {
+        if (selectAllRef.current) {
+            selectAllRef.current.indeterminate = someSelected;
+        }
+    }, [someSelected]);
+
     const columns = [
+        {
+            key: 'select',
+            title: (
+                <input
+                    ref={selectAllRef}
+                    type='checkbox'
+                    className='outgoing-checkbox'
+                    checked={allSelected}
+                    onChange={handleSelectAll}
+                    aria-label='Chọn tất cả'
+                />
+            ),
+            tooltip: false,
+            getSearchValue: () => '',
+            render: row => (
+                <input
+                    type='checkbox'
+                    className='outgoing-checkbox'
+                    checked={selectedIds.has(row.DocumentID)}
+                    onChange={() => handleToggleSelect(row.DocumentID)}
+                    aria-label='Chọn văn bản'
+                />
+            ),
+        },
         {
             key: 'DocumentNo',
             title: 'Số hiệu',
@@ -371,6 +503,40 @@ export default function IncomingDocumentsPage() {
                         placeholder='Tìm kiếm văn bản...'
                         style={{ marginBottom: 0 }}
                     />
+                    <div className='outgoing-action-buttons'>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant='outline'
+                                    onClick={handleExport}
+                                    className='incoming-export-btn'>
+                                    <FileDown size={14} />
+                                    <span>Xuất danh sách</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side='bottom'>
+                                <p>Xuất danh sách hiện tại ra CSV</p>
+                            </TooltipContent>
+                        </Tooltip>
+                        {selectedCount > 0 && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        disabled={isBulkDownloading || isDownloading}
+                                        onClick={handleBulkDownload}
+                                        className='outgoing-bulk-download-btn'>
+                                        <CheckSquare size={14} />
+                                        <span>
+                                            Tải {selectedCount} văn bản
+                                        </span>
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side='bottom'>
+                                    <p>Tải xuống các văn bản đã chọn</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        )}
+                    </div>
                     <FilterDialog
                         handleFilters={handleApplyFilters}
                         handleOpenFilters={handleOpenFilters}>
@@ -399,18 +565,48 @@ export default function IncomingDocumentsPage() {
                                 }
                                 value={String(draftFilters.year)}
                             />
-                            <Label htmlFor='filter-date'>Ngày</Label>
-                            <Input
-                                id='filter-date'
-                                type='date'
-                                value={draftFilters.date}
-                                onChange={event =>
-                                    setDraftFilters(prev => ({
-                                        ...prev,
-                                        date: event.target.value,
-                                    }))
-                                }
-                            />
+                            <Label>Ngày / Tháng / Năm</Label>
+                            <div className='grid grid-cols-3 gap-2'>
+                                <Input
+                                    type='number'
+                                    min='1'
+                                    max='31'
+                                    placeholder='Ngày'
+                                    value={draftFilters.dateDay}
+                                    onChange={event =>
+                                        setDraftFilters(prev => ({
+                                            ...prev,
+                                            dateDay: event.target.value,
+                                        }))
+                                    }
+                                />
+                                <Input
+                                    type='number'
+                                    min='1'
+                                    max='12'
+                                    placeholder='Tháng'
+                                    value={draftFilters.dateMonth}
+                                    onChange={event =>
+                                        setDraftFilters(prev => ({
+                                            ...prev,
+                                            dateMonth: event.target.value,
+                                        }))
+                                    }
+                                />
+                                <Input
+                                    type='number'
+                                    min='1900'
+                                    max='2100'
+                                    placeholder='Năm'
+                                    value={draftFilters.dateYear}
+                                    onChange={event =>
+                                        setDraftFilters(prev => ({
+                                            ...prev,
+                                            dateYear: event.target.value,
+                                        }))
+                                    }
+                                />
+                            </div>
                         </div>
                     </FilterDialog>
                 </div>
@@ -433,7 +629,17 @@ export default function IncomingDocumentsPage() {
                     {' | '}
                     Ngày:{' '}
                     <strong>
-                        {filters.date || 'Tất cả'}
+                        {filters.dateDay || filters.dateMonth || filters.dateYear
+                            ? [
+                                  filters.dateDay
+                                      ? filters.dateDay.padStart(2, '0')
+                                      : '--',
+                                  filters.dateMonth
+                                      ? filters.dateMonth.padStart(2, '0')
+                                      : '--',
+                                  filters.dateYear || '----',
+                              ].join('/')
+                            : 'Tất cả'}
                     </strong>
                 </div>
             </div>
@@ -443,9 +649,9 @@ export default function IncomingDocumentsPage() {
                 tableWidth={0}
                 responsive
                 longColumns={{
-                    1: 420,
-                    4: 260,
-                    6: 130,
+                    2: 420,
+                    5: 260,
+                    7: 130,
                 }}
                 minAutoColumnWidth={88}
                 rowKey='DocumentID'

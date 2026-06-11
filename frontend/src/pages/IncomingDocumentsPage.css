@@ -55,6 +55,14 @@
     min-width: 0;
 }
 
+.incoming-export-btn {
+    gap: 5px;
+    font-size: 13px;
+    height: 36px;
+    padding: 0 12px;
+    white-space: nowrap;
+}
+
 .incoming-search-input {
     width: min(360px, 90vw);
     border: 1px solid #cfd6e1;

@@ -46,6 +46,42 @@
     background: #2563eb;
 }
 
+.outgoing-action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.outgoing-export-btn {
+    gap: 5px;
+    font-size: 13px;
+    height: 36px;
+    padding: 0 12px;
+}
+
+.outgoing-bulk-download-btn {
+    gap: 5px;
+    font-size: 13px;
+    height: 36px;
+    padding: 0 12px;
+    background-color: #16a34a;
+    border-color: #16a34a;
+    color: #fff;
+}
+
+.outgoing-bulk-download-btn:hover:not(:disabled) {
+    background-color: #15803d;
+    border-color: #15803d;
+}
+
+.outgoing-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #2563eb;
+}
+
 .outgoing-toolbar-left {
     display: flex;
     align-items: center;
