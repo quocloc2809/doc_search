@@ -290,6 +290,7 @@ export default function AdminPage() {
                                     {isAuditLoading ? 'Đang tải...' : 'Refresh'}
                                 </Button>
                             )}
+                            <Button className='common-button-ghost' onClick={() => navigate('/')}>Trang chủ</Button>
                             <Button className='common-button-ghost' onClick={handleLogout}>Đăng xuất</Button>
                         </div>
                     </div>
