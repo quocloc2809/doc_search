@@ -334,14 +334,9 @@ export default function OutgoingDocumentsPage() {
             } else {
                 toast.success(`Đã tạo file tổng hợp ${merged} văn bản`);
             }
-        } catch {
-            toast.error('Không thể merge văn bản');
-        } finally {
-            setIsBulkDownloading(false);
-        }
-    }, [filteredDocuments, selectedIds, mergeBulkDownload, filters.year]);
-
-    const handleExport = useCallback(() => {
+        } catch (err) {
+            toast.error(err?.message || 'Không thể merge văn bản');
+        } finally { = useCallback(() => {
         if (filteredDocuments.length === 0) {
             toast.error('Không có dữ liệu để xuất');
             return;

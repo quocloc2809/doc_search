@@ -85,7 +85,7 @@ export function useFileDownload() {
       downloadBlob({ blob: result.blob, fileName: result.fileName })
       return result
     } catch (apiError) {
-      const message = apiError?.response?.data?.message || 'Merge file thất bại'
+      const message = apiError?.message || apiError?.response?.data?.message || 'Merge file thất bại'
       setError(message)
       throw apiError
     } finally {

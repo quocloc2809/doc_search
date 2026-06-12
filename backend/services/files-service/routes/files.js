@@ -382,19 +382,16 @@ router.post('/merge', async (req, res) => {
 
                 const fullPath = path.resolve(storageRoot, relativePath);
                 if (!isPathInsideRoot(storageRoot, fullPath) || !fs.existsSync(fullPath)) {
+                    logger.warn('Merge: file not found on disk', { documentId, fullPath });
                     skipped.push(documentId); continue;
                 }
-
-                const contentType = (fileRec.ContentType || '').toLowerCase();
-                const ext = path.extname(fullPath).toLowerCase();
-                const isPdf = contentType.includes('pdf') || ext === '.pdf';
-                if (!isPdf) { skipped.push(documentId); continue; }
 
                 const fileBytes = fs.readFileSync(fullPath);
                 let srcPdf;
                 try {
                     srcPdf = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
                 } catch {
+                    logger.warn('Merge: file is not a valid PDF', { documentId, fullPath });
                     skipped.push(documentId); continue;
                 }
 

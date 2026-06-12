@@ -368,8 +368,8 @@ export default function IncomingDocumentsPage() {
             } else {
                 toast.success(`Đã tạo file tổng hợp ${merged} văn bản`);
             }
-        } catch {
-            toast.error('Không thể merge văn bản');
+        } catch (err) {
+            toast.error(err?.message || 'Không thể merge văn bản');
         } finally {
             setIsBulkDownloading(false);
         }
