@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const archiver = require('archiver');
+const { ZipArchive } = require('archiver');
 const database = require('../../../shared/config/database');
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const createLogger = require('../../../shared/utils/logger');
@@ -569,7 +569,7 @@ router.post('/zip', async (req, res) => {
         res.setHeader('X-File-Count', String(entries.length));
         res.setHeader('X-Skipped-Count', String(skipReasons.length));
 
-        const archive = archiver('zip', { 
+        const archive = new ZipArchive('zip', { 
             zlib: { level: 1 },
             forceZip64: true 
         });
