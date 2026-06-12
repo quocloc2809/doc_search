@@ -2,8 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const _archiverImport = require('archiver');
-const archiver = typeof _archiverImport === 'function' ? _archiverImport : _archiverImport.default;
+const zlib = require('zlib');
 const database = require('../../../shared/config/database');
 const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -423,16 +422,84 @@ router.post('/zip', async (req, res) => {
         res.setHeader('X-File-Count', entries.length);
         res.setHeader('X-Skipped-Count', skipReasons.length);
 
-        const archive = archiver('zip', { zlib: { level: 6 } });
-        archive.on('error', (err) => {
-            logger.error('Zip archive error', { error: err.message });
-            if (!res.headersSent) res.status(500).end();
-        });
-        archive.pipe(res);
-        for (const { fullPath, zipName } of entries) {
-            archive.file(fullPath, { name: zipName });
+        // Build ZIP using Node.js built-in zlib (no external deps)
+        const CRC_TABLE = (() => {
+            const t = new Uint32Array(256);
+            for (let i = 0; i < 256; i++) {
+                let c = i;
+                for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                t[i] = c;
+            }
+            return t;
+        })();
+        function crc32(buf) {
+            let c = 0xFFFFFFFF;
+            for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+            return (c ^ 0xFFFFFFFF) >>> 0;
         }
-        await archive.finalize();
+
+        const localHeaders = [];
+        const centralDirs = [];
+        let offset = 0;
+        const now = new Date();
+        const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) >>> 0;
+        const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) >>> 0;
+
+        for (const { fullPath, zipName } of entries) {
+            const raw = fs.readFileSync(fullPath);
+            const cmp = zlib.deflateRawSync(raw, { level: 6 });
+            const fileData = cmp.length < raw.length ? cmp : raw;
+            const method = cmp.length < raw.length ? 8 : 0;
+            const crc = crc32(raw);
+            const nameBytes = Buffer.from(zipName, 'utf8');
+
+            const lh = Buffer.alloc(30 + nameBytes.length);
+            lh.writeUInt32LE(0x04034b50, 0);
+            lh.writeUInt16LE(20, 4);
+            lh.writeUInt16LE(0x0800, 6);
+            lh.writeUInt16LE(method, 8);
+            lh.writeUInt16LE(dosTime, 10);
+            lh.writeUInt16LE(dosDate, 12);
+            lh.writeUInt32LE(crc, 14);
+            lh.writeUInt32LE(fileData.length, 18);
+            lh.writeUInt32LE(raw.length, 22);
+            lh.writeUInt16LE(nameBytes.length, 26);
+            lh.writeUInt16LE(0, 28);
+            nameBytes.copy(lh, 30);
+            localHeaders.push(lh, fileData);
+
+            const cd = Buffer.alloc(46 + nameBytes.length);
+            cd.writeUInt32LE(0x02014b50, 0);
+            cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6);
+            cd.writeUInt16LE(0x0800, 8);
+            cd.writeUInt16LE(method, 10);
+            cd.writeUInt16LE(dosTime, 12);
+            cd.writeUInt16LE(dosDate, 14);
+            cd.writeUInt32LE(crc, 16);
+            cd.writeUInt32LE(fileData.length, 20);
+            cd.writeUInt32LE(raw.length, 24);
+            cd.writeUInt16LE(nameBytes.length, 28);
+            cd.fill(0, 30, 42);
+            cd.writeUInt32LE(offset, 42);
+            nameBytes.copy(cd, 46);
+            centralDirs.push(cd);
+
+            offset += lh.length + fileData.length;
+        }
+
+        const cdBuf = Buffer.concat(centralDirs);
+        const eocd = Buffer.alloc(22);
+        eocd.writeUInt32LE(0x06054b50, 0);
+        eocd.fill(0, 4, 8);
+        eocd.writeUInt16LE(entries.length, 8);
+        eocd.writeUInt16LE(entries.length, 10);
+        eocd.writeUInt32LE(cdBuf.length, 12);
+        eocd.writeUInt32LE(offset, 16);
+        eocd.writeUInt16LE(0, 20);
+
+        const zipBuffer = Buffer.concat([...localHeaders, cdBuf, eocd]);
+        res.setHeader('Content-Length', zipBuffer.length);
+        res.end(zipBuffer);
 
         audit.log('ZIP_FILES', {
             userId: req.headers['x-user-id'] || null,
