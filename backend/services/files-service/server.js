@@ -18,11 +18,11 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: true,
-    exposedHeaders: ['Content-Disposition', 'Content-Type', 'X-File-Count', 'X-Skipped-Count']
+    exposedHeaders: ['Content-Disposition', 'Content-Type']
 }));
 
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // Logging middleware
 app.use((req, res, next) => {
@@ -56,14 +56,6 @@ app.use('/api/files', filesRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    if (err.type === 'entity.too.large') {
-        logger.warn('Request payload too large', { path: req.path, limit: err.limit, length: err.length });
-        return res.status(413).json({
-            success: false,
-            message: 'Danh sách văn bản quá lớn. Vui lòng thử chọn ít hơn hoặc liên hệ quản trị viên.',
-        });
-    }
-
     logger.error('Files service internal error', { error: err.message, stack: err.stack });
     res.status(500).json({
         success: false,

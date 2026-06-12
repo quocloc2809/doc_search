@@ -4,12 +4,11 @@ const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
 const database = require('../../../shared/config/database');
-const sql = database.sql;   
+const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const createLogger = require('../../../shared/utils/logger');
 const audit = require('../../../shared/utils/auditLogger');
 const logger = createLogger('files');
-const fsPromises = fs.promises;
 
 async function querySingleFileRecord(pool, { tableName, documentId }) {
     const result = await pool
@@ -342,6 +341,7 @@ router.get('/download/:documentId', async (req, res) => {
     }
 });
 
+// Nén nhiều văn bản thành 1 file ZIP
 router.post('/zip', async (req, res) => {
     try {
         const items = req.body?.items;
@@ -422,7 +422,7 @@ router.post('/zip', async (req, res) => {
         res.setHeader('X-File-Count', entries.length);
         res.setHeader('X-Skipped-Count', skipReasons.length);
 
-          // Build ZIP using Node.js built-in zlib (no external deps)
+        // Build ZIP using Node.js built-in zlib (no external deps)
         const CRC_TABLE = (() => {
             const t = new Uint32Array(256);
             for (let i = 0; i < 256; i++) {
@@ -444,8 +444,9 @@ router.post('/zip', async (req, res) => {
         const now = new Date();
         const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) >>> 0;
         const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) >>> 0;
+
         for (const { fullPath, zipName } of entries) {
-             const raw = fs.readFileSync(fullPath);
+            const raw = fs.readFileSync(fullPath);
             const cmp = zlib.deflateRawSync(raw, { level: 6 });
             const fileData = cmp.length < raw.length ? cmp : raw;
             const method = cmp.length < raw.length ? 8 : 0;
@@ -500,7 +501,7 @@ router.post('/zip', async (req, res) => {
         res.setHeader('Content-Length', zipBuffer.length);
         res.end(zipBuffer);
 
-                audit.log('ZIP_FILES', {
+        audit.log('ZIP_FILES', {
             userId: req.headers['x-user-id'] || null,
             username: req.headers['x-user-name'] || null,
             fileCount: entries.length,
