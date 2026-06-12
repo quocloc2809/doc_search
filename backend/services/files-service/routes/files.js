@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const archiver = require('archiver');
+const _archiverImport = require('archiver');
+const archiver = typeof _archiverImport === 'function' ? _archiverImport : _archiverImport.default;
 const database = require('../../../shared/config/database');
 const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -425,17 +426,12 @@ router.post('/zip', async (req, res) => {
         const archive = archiver('zip', { zlib: { level: 6 } });
         archive.on('error', (err) => {
             logger.error('Zip archive error', { error: err.message });
-            if (!res.headersSent) {
-                res.status(500).end();
-            }
+            if (!res.headersSent) res.status(500).end();
         });
-
         archive.pipe(res);
-
         for (const { fullPath, zipName } of entries) {
             archive.file(fullPath, { name: zipName });
         }
-
         await archive.finalize();
 
         audit.log('ZIP_FILES', {
