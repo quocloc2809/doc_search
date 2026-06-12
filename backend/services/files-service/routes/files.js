@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const { PDFDocument } = require('pdf-lib');
 const database = require('../../../shared/config/database');
 const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -336,6 +337,96 @@ router.get('/download/:documentId', async (req, res) => {
         });
     } catch (error) {
         logger.error('Error in file download route', { error: error.message });
+        res.status(500).json({ success: false, message: 'Server error', error: IS_PRODUCTION ? 'Internal server error' : error.message });
+    }
+});
+
+// Merge nhiều văn bản thành 1 PDF
+router.post('/merge', async (req, res) => {
+    try {
+        const items = req.body?.items;
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'Danh sách văn bản không hợp lệ' });
+        }
+        if (items.length > 100) {
+            return res.status(400).json({ success: false, message: 'Tối đa 100 văn bản mỗi lần merge' });
+        }
+
+        const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
+        const mergedPdf = await PDFDocument.create();
+        let mergedCount = 0;
+        const skipped = [];
+
+        for (const item of items) {
+            const documentId = parseInt(item.documentId, 10);
+            if (isNaN(documentId)) { skipped.push(item.documentId); continue; }
+
+            const tableName = item.type === 'outgoing' ? 'WF_Outgoing_Doc_Files' : 'WF_Incoming_Doc_Files';
+
+            try {
+                const { record: fileRec } = await getFileRecordWithFallback({
+                    tableName,
+                    documentId,
+                    dbKey: item.db,
+                    year: item.year,
+                });
+
+                if (!fileRec) { skipped.push(documentId); continue; }
+
+                let relativePath;
+                try {
+                    relativePath = toSafeRelativePath(fileRec.FileName || '');
+                } catch {
+                    skipped.push(documentId); continue;
+                }
+
+                const fullPath = path.resolve(storageRoot, relativePath);
+                if (!isPathInsideRoot(storageRoot, fullPath) || !fs.existsSync(fullPath)) {
+                    skipped.push(documentId); continue;
+                }
+
+                const contentType = (fileRec.ContentType || '').toLowerCase();
+                const ext = path.extname(fullPath).toLowerCase();
+                const isPdf = contentType.includes('pdf') || ext === '.pdf';
+                if (!isPdf) { skipped.push(documentId); continue; }
+
+                const fileBytes = fs.readFileSync(fullPath);
+                let srcPdf;
+                try {
+                    srcPdf = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
+                } catch {
+                    skipped.push(documentId); continue;
+                }
+
+                const copiedPages = await mergedPdf.copyPagesFrom(srcPdf, srcPdf.getPageIndices());
+                copiedPages.forEach(page => mergedPdf.addPage(page));
+                mergedCount += 1;
+            } catch {
+                skipped.push(documentId);
+            }
+        }
+
+        if (mergedCount === 0) {
+            return res.status(422).json({ success: false, message: 'Không có file PDF nào có thể merge', skipped });
+        }
+
+        const mergedBytes = await mergedPdf.save();
+
+        audit.log('MERGE_FILES', {
+            userId: req.headers['x-user-id'] || null,
+            username: req.headers['x-user-name'] || null,
+            mergedCount,
+            skipped,
+            ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '',
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="VanBanTongHop.pdf"');
+        res.setHeader('X-Merged-Count', mergedCount);
+        res.setHeader('X-Skipped-Count', skipped.length);
+        res.end(Buffer.from(mergedBytes));
+    } catch (error) {
+        logger.error('Error merging files', { error: error.message });
         res.status(500).json({ success: false, message: 'Server error', error: IS_PRODUCTION ? 'Internal server error' : error.message });
     }
 });

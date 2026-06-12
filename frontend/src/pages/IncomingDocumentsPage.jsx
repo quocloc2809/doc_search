@@ -61,15 +61,15 @@ export default function IncomingDocumentsPage() {
         isDownloading,
         error: downloadError,
         downloadIncomingFile,
+        mergeBulkDownload,
     } = useFileDownload();
     const [searchKeyword, setSearchKeyword] = useState('');
     const [searchField, setSearchField] = useState('all');
     const [filters, setFilters] = useState(() => ({
         department: 'all',
         year: initialYear || 'all',
-        dateDay: '',
-        dateMonth: '',
-        dateYear: '',
+        dateFrom: '',
+        dateTo: '',
     }));
     const [draftFilters, setDraftFilters] = useState(filters);
     const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -229,21 +229,14 @@ export default function IncomingDocumentsPage() {
                   )
                 : true;
 
-            const hasDateFilter =
-                filters.dateDay || filters.dateMonth || filters.dateYear;
+            const hasDateFilter = filters.dateFrom || filters.dateTo;
             const matchesDate = hasDateFilter
                 ? rowDate
-                    ? (filters.dateDay
-                          ? rowDate.getDate() ===
-                            parseInt(filters.dateDay, 10)
+                    ? (filters.dateFrom
+                          ? rowDate >= new Date(filters.dateFrom)
                           : true) &&
-                      (filters.dateMonth
-                          ? rowDate.getMonth() + 1 ===
-                            parseInt(filters.dateMonth, 10)
-                          : true) &&
-                      (filters.dateYear
-                          ? rowDate.getFullYear() ===
-                            parseInt(filters.dateYear, 10)
+                      (filters.dateTo
+                          ? rowDate <= new Date(filters.dateTo + 'T23:59:59')
                           : true)
                     : false
                 : true;
@@ -258,9 +251,8 @@ export default function IncomingDocumentsPage() {
     }, [
         documents,
         filters.department,
-        filters.dateDay,
-        filters.dateMonth,
-        filters.dateYear,
+        filters.dateFrom,
+        filters.dateTo,
         filters.year,
         searchKeyword,
         searchField,
@@ -278,6 +270,7 @@ export default function IncomingDocumentsPage() {
             'Ban hành',
             'Lãnh đạo bút phê',
             'Đơn vị xử lý chính',
+            'Tên file',
         ];
         const escape = val =>
             `"${String(val || '').replace(/"/g, '""')}"`;
@@ -291,6 +284,7 @@ export default function IncomingDocumentsPage() {
                     escape(row.IssuedOrganizationName),
                     escape(row.LeaderName),
                     escape(row.GroupName),
+                    escape(buildDocumentDownloadTitle(row.DocumentNo, row.ReceivedDate || row.CreatedDate)),
                 ].join(','),
             ),
         ];
@@ -301,7 +295,7 @@ export default function IncomingDocumentsPage() {
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = `danh-sach-van-ban-den-${new Date().toISOString().slice(0, 10)}.csv`;
+        anchor.download = `danh_sach_van_ban.csv`;
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
@@ -359,18 +353,27 @@ export default function IncomingDocumentsPage() {
             return;
         }
         setIsBulkDownloading(true);
-        let successCount = 0;
-        for (const doc of selectedDocs) {
-            try {
-                await handleDownload(doc);
-                successCount += 1;
-            } catch {
-                // continue downloading remaining files
+        try {
+            const items = selectedDocs.map(doc => ({
+                documentId: doc.DocumentID,
+                type: 'incoming',
+                db: doc.SourceDb || undefined,
+                year: filters.year !== 'all' ? filters.year : undefined,
+            }));
+            const result = await mergeBulkDownload(items);
+            const skipped = result?.skippedCount || 0;
+            const merged = result?.mergedCount || 0;
+            if (skipped > 0) {
+                toast.success(`Đã merge ${merged} văn bản (bỏ qua ${skipped} file không phải PDF)`);
+            } else {
+                toast.success(`Đã tạo file tổng hợp ${merged} văn bản`);
             }
+        } catch {
+            toast.error('Không thể merge văn bản');
+        } finally {
+            setIsBulkDownloading(false);
         }
-        setIsBulkDownloading(false);
-        toast.success(`Đã tải ${successCount}/${selectedDocs.length} văn bản`);
-    }, [filteredDocuments, selectedIds, handleDownload]);
+    }, [filteredDocuments, selectedIds, mergeBulkDownload, filters.year]);
 
     const selectAllRef = useRef(null);
     useEffect(() => {
@@ -565,48 +568,28 @@ export default function IncomingDocumentsPage() {
                                 }
                                 value={String(draftFilters.year)}
                             />
-                            <Label>Ngày / Tháng / Năm</Label>
-                            <div className='grid grid-cols-3 gap-2'>
-                                <Input
-                                    type='number'
-                                    min='1'
-                                    max='31'
-                                    placeholder='Ngày'
-                                    value={draftFilters.dateDay}
-                                    onChange={event =>
-                                        setDraftFilters(prev => ({
-                                            ...prev,
-                                            dateDay: event.target.value,
-                                        }))
-                                    }
-                                />
-                                <Input
-                                    type='number'
-                                    min='1'
-                                    max='12'
-                                    placeholder='Tháng'
-                                    value={draftFilters.dateMonth}
-                                    onChange={event =>
-                                        setDraftFilters(prev => ({
-                                            ...prev,
-                                            dateMonth: event.target.value,
-                                        }))
-                                    }
-                                />
-                                <Input
-                                    type='number'
-                                    min='1900'
-                                    max='2100'
-                                    placeholder='Năm'
-                                    value={draftFilters.dateYear}
-                                    onChange={event =>
-                                        setDraftFilters(prev => ({
-                                            ...prev,
-                                            dateYear: event.target.value,
-                                        }))
-                                    }
-                                />
-                            </div>
+                            <Label>Từ ngày</Label>
+                            <Input
+                                type='date'
+                                value={draftFilters.dateFrom}
+                                onChange={event =>
+                                    setDraftFilters(prev => ({
+                                        ...prev,
+                                        dateFrom: event.target.value,
+                                    }))
+                                }
+                            />
+                            <Label>Đến ngày</Label>
+                            <Input
+                                type='date'
+                                value={draftFilters.dateTo}
+                                onChange={event =>
+                                    setDraftFilters(prev => ({
+                                        ...prev,
+                                        dateTo: event.target.value,
+                                    }))
+                                }
+                            />
                         </div>
                     </FilterDialog>
                 </div>
@@ -629,16 +612,8 @@ export default function IncomingDocumentsPage() {
                     {' | '}
                     Ngày:{' '}
                     <strong>
-                        {filters.dateDay || filters.dateMonth || filters.dateYear
-                            ? [
-                                  filters.dateDay
-                                      ? filters.dateDay.padStart(2, '0')
-                                      : '--',
-                                  filters.dateMonth
-                                      ? filters.dateMonth.padStart(2, '0')
-                                      : '--',
-                                  filters.dateYear || '----',
-                              ].join('/')
+                        {filters.dateFrom || filters.dateTo
+                            ? `${filters.dateFrom ? new Date(filters.dateFrom).toLocaleDateString('vi-VN') : '--'} → ${filters.dateTo ? new Date(filters.dateTo).toLocaleDateString('vi-VN') : '--'}`
                             : 'Tất cả'}
                     </strong>
                 </div>

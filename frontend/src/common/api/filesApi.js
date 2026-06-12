@@ -49,3 +49,14 @@ export async function downloadLegacyIncomingFile(documentId, { db, year } = {}) 
   if (year) params.year = year
   return downloadFileByPath(`/api/files/download/${documentId}`, { params })
 }
+
+export async function mergeFiles(items) {
+  const response = await httpClient.post('/api/files/merge', { items }, { responseType: 'blob' })
+  return {
+    blob: response.data,
+    fileName: 'VanBanTongHop.pdf',
+    contentType: 'application/pdf',
+    mergedCount: parseInt(response.headers['x-merged-count'] || '0', 10),
+    skippedCount: parseInt(response.headers['x-skipped-count'] || '0', 10),
+  }
+}

@@ -77,11 +77,28 @@ export function useFileDownload() {
   const downloadOutgoingFile = (documentId, db, title, year) => runDownload(() => filesApi.downloadOutgoingFile(documentId, { db, title, year }), title)
   const downloadLegacyIncomingFile = (documentId, db, year) => runDownload(() => filesApi.downloadLegacyIncomingFile(documentId, { db, year }))
 
+  const mergeBulkDownload = async (items) => {
+    setIsDownloading(true)
+    setError('')
+    try {
+      const result = await filesApi.mergeFiles(items)
+      downloadBlob({ blob: result.blob, fileName: result.fileName })
+      return result
+    } catch (apiError) {
+      const message = apiError?.response?.data?.message || 'Merge file thất bại'
+      setError(message)
+      throw apiError
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   return {
     isDownloading,
     error,
     downloadIncomingFile,
     downloadOutgoingFile,
     downloadLegacyIncomingFile,
+    mergeBulkDownload,
   }
 }
