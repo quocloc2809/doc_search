@@ -40,7 +40,7 @@ export default function AdminPage() {
     const navigate = useNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
     const { users, isLoading, error, createUser, updateUser, deleteUser } = useUsers()
-    const { departments } = useDepartments()
+    const { departments } = useDepartments({ source: 'portals' })
     const toast = useToast()
     const todayAuditDate = toISODate(new Date())
     const [selectedAuditDate, setSelectedAuditDate] = useState(

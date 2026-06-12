@@ -56,7 +56,7 @@ export default function OutgoingDocumentsPage() {
         departments,
         error: departmentsError,
         refetch: refetchDepartments,
-    } = useDepartments();
+    } = useDepartments({ source: 'portals' });
     const {
         isDownloading,
         error: downloadError,
@@ -207,9 +207,10 @@ export default function OutgoingDocumentsPage() {
             const rowYear = Number.isNaN(createdDate.getTime())
                 ? ''
                 : String(createdDate.getFullYear());
-            const rawGroupId = row?.IssuedGroupID;
             const rowDepartmentId =
-                rawGroupId != null ? String(Math.abs(rawGroupId)) : '';
+                row?.PortalId != null && row?.PortalId !== ''
+                    ? String(row.PortalId)
+                    : '';
             const rowDate = parseRowDate(row?.SignedDate || row?.CreatedDate);
 
             const matchesDepartment =

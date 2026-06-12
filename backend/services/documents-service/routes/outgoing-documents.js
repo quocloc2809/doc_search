@@ -20,8 +20,7 @@ async function queryOutgoingList(pool, { hasGroupFilter, groupIdNum, year, sql }
     const conditions = [];
     if (hasGroupFilter) {
         request.input('groupId', sql.Int, groupIdNum);
-        // Match consistently even if IssuedGroupID is negative (portal).
-        conditions.push('ABS(doc.IssuedGroupID) = @groupId');
+        conditions.push('doc.PortalId = @groupId');
     }
 
     if (year && Number.isFinite(Number(year))) {
@@ -47,7 +46,8 @@ async function queryOutgoingList(pool, { hasGroupFilter, groupIdNum, year, sql }
             doc.DocumentSummary,
             doc.SignedDate,
             doc.SignerPosition,                
-            doc.IssuedGroupID,                
+            doc.IssuedGroupID,
+            doc.PortalId AS PortalId,
             NULLIF(LTRIM(RTRIM(COALESCE(usr.Lastname, '') + ' ' + COALESCE(usr.FirstName, ''))), '') as SignerFullname,
             CASE
                 WHEN doc.IssuedGroupID > 0 THEN COALESCE(g.GroupName, '')
@@ -181,6 +181,7 @@ router.get('/:id', async (req, res) => {
             doc.SignedDate,
             doc.SignerPosition,
             doc.IssuedGroupID,
+            doc.PortalId AS PortalId,
             NULLIF(LTRIM(RTRIM(COALESCE(usr.Lastname, '') + ' ' + COALESCE(usr.FirstName, ''))), '') as SignerFullname,
             CASE
                 WHEN doc.IssuedGroupID > 0 THEN COALESCE(g.GroupName, '')

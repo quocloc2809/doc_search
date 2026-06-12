@@ -163,9 +163,7 @@ async function queryIncomingList(
 
     if (hasGroupFilter) {
         request.input('groupId', sql.Int, groupIdNum);
-        // Some records use negative IDs (portal), while the user group id is positive.
-        // Match consistently with how the UI normalizes IDs.
-        conditions.push('ABS(doc.AssignedGroupID) = @groupId');
+        conditions.push('doc.PortalId = @groupId');
     }
 
     if (year && Number.isFinite(Number(year))) {
@@ -197,6 +195,7 @@ async function queryIncomingList(
             doc.AssignedGroupID,
             doc.AssignedReviewedUserID,
             doc.CompletedDate,
+            doc.PortalId AS PortalId,
             CASE
                 WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.GroupName, '')
                 WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')
@@ -328,6 +327,7 @@ router.get('/:id', async (req, res) => {
               doc.ReceivedDate,
               doc.DocumentSummary,
               doc.issuedOrganizationName2,
+              doc.PortalId AS PortalId,
               CASE
                     WHEN doc.AssignedGroupID > 0 THEN COALESCE(grp.GroupName, '')
                     WHEN doc.AssignedGroupID < 0 THEN COALESCE(portal.PortalName, '')

@@ -5,6 +5,35 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const createLogger = require('../../../shared/utils/logger');
 const logger = createLogger('departments');
 
+router.get('/portals', async (req, res) => {
+    try {
+        const pool = database.getPool();
+
+        const result = await pool.request().query(`
+            SELECT
+                PortalId AS GroupID,
+                PortalName AS GroupName
+            FROM dbo.Core_Portals
+            WHERE PortalId IS NOT NULL
+                AND PortalName IS NOT NULL
+                AND LTRIM(RTRIM(PortalName)) <> ''
+            ORDER BY PortalId
+        `);
+
+        res.json({
+            success: true,
+            data: result.recordset
+        });
+    } catch (error) {
+        logger.error('Lỗi lấy danh sách portal', { error: error.message });
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server',
+            error: IS_PRODUCTION ? 'Internal server error' : error.message
+        });
+    }
+});
+
 router.get('/', async (req, res) => {
     try {
         const pool = database.getPool();
