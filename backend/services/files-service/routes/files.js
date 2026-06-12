@@ -2,9 +2,8 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const zlib = require('zlib');
+const archiver = require('archiver');
 const database = require('../../../shared/config/database');
-const sql = database.sql;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const createLogger = require('../../../shared/utils/logger');
 const audit = require('../../../shared/utils/auditLogger');
@@ -60,6 +59,173 @@ async function getFileRecordWithFallback({ tableName, documentId, dbKey, year })
     }
 
     return { record, sourceDb };
+}
+
+const ZIP_DB_BATCH_SIZE = 200;
+
+function getItemTableName(item) {
+    return item.type === 'outgoing' ? 'WF_Outgoing_Doc_Files' : 'WF_Incoming_Doc_Files';
+}
+
+function getItemQueryGroupKey(item) {
+    const tableName = getItemTableName(item);
+    const dbKey = (item.db || '').toString().trim();
+    const year = (item.year || '').toString().trim();
+    const yearStr = /^\d{4}$/.test(year) ? year : '';
+
+    if (dbKey) return `${tableName}|db|${dbKey}`;
+    if (yearStr) return `${tableName}|year|${yearStr}`;
+    return `${tableName}|default`;
+}
+
+async function queryFileRecordsBatch(pool, tableName, documentIds) {
+    const recordMap = new Map();
+    if (documentIds.length === 0) return recordMap;
+
+    for (let i = 0; i < documentIds.length; i += ZIP_DB_BATCH_SIZE) {
+        const batch = documentIds.slice(i, i + ZIP_DB_BATCH_SIZE);
+        const request = pool.request();
+        batch.forEach((docId, idx) => request.input(`docId${idx}`, docId));
+        const inList = batch.map((_, idx) => `@docId${idx}`).join(', ');
+
+        const result = await request.query(`
+            SELECT FileID, FileName, ContentType, DocumentID
+            FROM (
+                SELECT FileID, FileName, ContentType, DocumentID,
+                       ROW_NUMBER() OVER (PARTITION BY DocumentID ORDER BY FileID DESC) AS rn
+                FROM dbo.${tableName}
+                WHERE DocumentID IN (${inList})
+            ) ranked
+            WHERE rn = 1
+        `);
+
+        for (const row of result.recordset || []) {
+            recordMap.set(row.DocumentID, row);
+        }
+    }
+
+    return recordMap;
+}
+
+async function fetchFileRecordsForGroup(groupKey, groupedItems) {
+    const [tableName, mode, keyValue] = groupKey.split('|');
+    const documentIds = groupedItems.map(({ documentId }) => documentId);
+
+    if (mode === 'db') {
+        const pool = await database.getPoolByDbKey(keyValue);
+        return queryFileRecordsBatch(pool, tableName, documentIds);
+    }
+
+    if (mode === 'year') {
+        const pool = await database.getPoolForYear(keyValue);
+        return queryFileRecordsBatch(pool, tableName, documentIds);
+    }
+
+    const primaryKey = database.getPrimaryKey();
+    const db2020Key = database.get2020Key();
+    const primaryPool = database.getPool(primaryKey);
+    const recordMap = await queryFileRecordsBatch(primaryPool, tableName, documentIds);
+
+    const missingIds = documentIds.filter((id) => !recordMap.has(id));
+    if (missingIds.length > 0) {
+        try {
+            const po2020Pool = await database.getPoolByDbKey(db2020Key);
+            const fallbackMap = await queryFileRecordsBatch(po2020Pool, tableName, missingIds);
+            for (const [id, record] of fallbackMap) {
+                recordMap.set(id, record);
+            }
+        } catch {
+            // ignore legacy fallback errors
+        }
+    }
+
+    return recordMap;
+}
+
+async function resolveZipEntries(items, storageRoot) {
+    const skipReasons = [];
+    const addedNames = new Set();
+    const entries = [];
+    const groups = new Map();
+    const recordLookup = new Map();
+    const failedDocumentIds = new Set();
+
+    for (const item of items) {
+        const documentId = parseInt(item.documentId, 10);
+        if (isNaN(documentId)) {
+            skipReasons.push({ id: item.documentId, reason: 'invalid_id' });
+            continue;
+        }
+
+        const groupKey = getItemQueryGroupKey(item);
+        if (!groups.has(groupKey)) {
+            groups.set(groupKey, []);
+        }
+        groups.get(groupKey).push({ item, documentId });
+    }
+
+    for (const [groupKey, groupedItems] of groups) {
+        try {
+            const recordMap = await fetchFileRecordsForGroup(groupKey, groupedItems);
+            for (const { documentId } of groupedItems) {
+                recordLookup.set(`${groupKey}|${documentId}`, recordMap.get(documentId) || null);
+            }
+        } catch (groupErr) {
+            logger.error('Zip: batch query failed for group', { groupKey, error: groupErr.message });
+            for (const { documentId } of groupedItems) {
+                failedDocumentIds.add(documentId);
+                skipReasons.push({ id: documentId, reason: 'unexpected_error' });
+            }
+        }
+    }
+
+    for (const [groupKey, groupedItems] of groups) {
+        for (const { item, documentId } of groupedItems) {
+            if (failedDocumentIds.has(documentId)) continue;
+
+            try {
+                const fileRec = recordLookup.get(`${groupKey}|${documentId}`);
+                if (!fileRec) {
+                    skipReasons.push({ id: documentId, reason: 'no_db_record' });
+                    continue;
+                }
+
+                let relativePath;
+                try {
+                    relativePath = toSafeRelativePath(fileRec.FileName || '');
+                } catch {
+                    skipReasons.push({ id: documentId, reason: 'invalid_path' });
+                    continue;
+                }
+
+                const fullPath = path.resolve(storageRoot, relativePath);
+                if (!isPathInsideRoot(storageRoot, fullPath)) {
+                    skipReasons.push({ id: documentId, reason: 'path_traversal' });
+                    continue;
+                }
+                if (!fs.existsSync(fullPath)) {
+                    logger.warn('Zip: file not found on disk', { documentId, fullPath });
+                    skipReasons.push({ id: documentId, reason: 'file_not_on_disk' });
+                    continue;
+                }
+
+                const ext = path.extname(fullPath);
+                const baseName = buildDownloadFileName(item.title || '', fileRec.FileName || '');
+                let zipName = baseName;
+                if (addedNames.has(zipName)) {
+                    zipName = path.basename(baseName, ext) + '_' + documentId + ext;
+                }
+                addedNames.add(zipName);
+
+                entries.push({ fullPath, zipName, documentId });
+            } catch (itemErr) {
+                logger.error('Zip: unexpected error for item', { documentId, error: itemErr.message });
+                skipReasons.push({ id: documentId, reason: 'unexpected_error' });
+            }
+        }
+    }
+
+    return { entries, skipReasons };
 }
 
 function toSafeRelativePath(filePath) {
@@ -341,7 +507,7 @@ router.get('/download/:documentId', async (req, res) => {
     }
 });
 
-// Nén nhiều văn bản thành 1 file ZIP
+// Nén nhiều văn bản thành 1 file ZIP (stream qua archiver, không load toàn bộ vào RAM)
 router.post('/zip', async (req, res) => {
     try {
         const items = req.body?.items;
@@ -353,65 +519,7 @@ router.post('/zip', async (req, res) => {
         }
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
-        const skipReasons = [];
-        const addedNames = new Set();
-
-        // Collect valid file entries before streaming
-        const entries = [];
-        for (const item of items) {
-            const documentId = parseInt(item.documentId, 10);
-            if (isNaN(documentId)) { skipReasons.push({ id: item.documentId, reason: 'invalid_id' }); continue; }
-
-            const tableName = item.type === 'outgoing' ? 'WF_Outgoing_Doc_Files' : 'WF_Incoming_Doc_Files';
-
-            try {
-                const { record: fileRec } = await getFileRecordWithFallback({
-                    tableName,
-                    documentId,
-                    dbKey: item.db,
-                    year: item.year,
-                });
-
-                if (!fileRec) {
-                    skipReasons.push({ id: documentId, reason: 'no_db_record' });
-                    continue;
-                }
-
-                let relativePath;
-                try {
-                    relativePath = toSafeRelativePath(fileRec.FileName || '');
-                } catch {
-                    skipReasons.push({ id: documentId, reason: 'invalid_path' });
-                    continue;
-                }
-
-                const fullPath = path.resolve(storageRoot, relativePath);
-                if (!isPathInsideRoot(storageRoot, fullPath)) {
-                    skipReasons.push({ id: documentId, reason: 'path_traversal' });
-                    continue;
-                }
-                if (!fs.existsSync(fullPath)) {
-                    logger.warn('Zip: file not found on disk', { documentId, fullPath });
-                    skipReasons.push({ id: documentId, reason: 'file_not_on_disk' });
-                    continue;
-                }
-
-                // Build formatted file name
-                const ext = path.extname(fullPath);
-                const baseName = buildDownloadFileName(item.title || '', fileRec.FileName || '');
-                // De-duplicate: append documentId if name already used
-                let zipName = baseName;
-                if (addedNames.has(zipName)) {
-                    zipName = path.basename(baseName, ext) + '_' + documentId + ext;
-                }
-                addedNames.add(zipName);
-
-                entries.push({ fullPath, zipName, documentId });
-            } catch (itemErr) {
-                logger.error('Zip: unexpected error for item', { documentId, error: itemErr.message });
-                skipReasons.push({ id: documentId, reason: 'unexpected_error' });
-            }
-        }
+        const { entries, skipReasons } = await resolveZipEntries(items, storageRoot);
 
         if (entries.length === 0) {
             return res.status(422).json({ success: false, message: 'Không tìm thấy file nào để tải', skipReasons: IS_PRODUCTION ? [...new Set(skipReasons.map(s => s.reason))] : skipReasons });
@@ -419,94 +527,40 @@ router.post('/zip', async (req, res) => {
 
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', 'attachment; filename="VanBanTongHop.zip"');
-        res.setHeader('X-File-Count', entries.length);
-        res.setHeader('X-Skipped-Count', skipReasons.length);
+        res.setHeader('X-File-Count', String(entries.length));
+        res.setHeader('X-Skipped-Count', String(skipReasons.length));
 
-        // Build ZIP using Node.js built-in zlib (no external deps)
-        const CRC_TABLE = (() => {
-            const t = new Uint32Array(256);
-            for (let i = 0; i < 256; i++) {
-                let c = i;
-                for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-                t[i] = c;
+        const archive = archiver('zip', { zlib: { level: 6 } });
+
+        archive.on('warning', (err) => {
+            if (err.code !== 'ENOENT') {
+                logger.error('Zip archive warning', { error: err.message });
             }
-            return t;
-        })();
-        function crc32(buf) {
-            let c = 0xFFFFFFFF;
-            for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
-            return (c ^ 0xFFFFFFFF) >>> 0;
-        }
+        });
 
-        const localHeaders = [];
-        const centralDirs = [];
-        let offset = 0;
-        const now = new Date();
-        const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) >>> 0;
-        const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) >>> 0;
+        archive.on('error', (err) => {
+            logger.error('Zip archive error', { error: err.message });
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, message: 'Server error', error: IS_PRODUCTION ? 'Internal server error' : err.message });
+            } else {
+                res.destroy(err);
+            }
+        });
+
+        archive.pipe(res);
 
         for (const { fullPath, zipName } of entries) {
-            const raw = fs.readFileSync(fullPath);
-            const cmp = zlib.deflateRawSync(raw, { level: 6 });
-            const fileData = cmp.length < raw.length ? cmp : raw;
-            const method = cmp.length < raw.length ? 8 : 0;
-            const crc = crc32(raw);
-            const nameBytes = Buffer.from(zipName, 'utf8');
-
-            const lh = Buffer.alloc(30 + nameBytes.length);
-            lh.writeUInt32LE(0x04034b50, 0);
-            lh.writeUInt16LE(20, 4);
-            lh.writeUInt16LE(0x0800, 6);
-            lh.writeUInt16LE(method, 8);
-            lh.writeUInt16LE(dosTime, 10);
-            lh.writeUInt16LE(dosDate, 12);
-            lh.writeUInt32LE(crc, 14);
-            lh.writeUInt32LE(fileData.length, 18);
-            lh.writeUInt32LE(raw.length, 22);
-            lh.writeUInt16LE(nameBytes.length, 26);
-            lh.writeUInt16LE(0, 28);
-            nameBytes.copy(lh, 30);
-            localHeaders.push(lh, fileData);
-
-            const cd = Buffer.alloc(46 + nameBytes.length);
-            cd.writeUInt32LE(0x02014b50, 0);
-            cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6);
-            cd.writeUInt16LE(0x0800, 8);
-            cd.writeUInt16LE(method, 10);
-            cd.writeUInt16LE(dosTime, 12);
-            cd.writeUInt16LE(dosDate, 14);
-            cd.writeUInt32LE(crc, 16);
-            cd.writeUInt32LE(fileData.length, 20);
-            cd.writeUInt32LE(raw.length, 24);
-            cd.writeUInt16LE(nameBytes.length, 28);
-            cd.fill(0, 30, 42);
-            cd.writeUInt32LE(offset, 42);
-            nameBytes.copy(cd, 46);
-            centralDirs.push(cd);
-
-            offset += lh.length + fileData.length;
+            archive.file(fullPath, { name: zipName });
         }
 
-        const cdBuf = Buffer.concat(centralDirs);
-        const eocd = Buffer.alloc(22);
-        eocd.writeUInt32LE(0x06054b50, 0);
-        eocd.fill(0, 4, 8);
-        eocd.writeUInt16LE(entries.length, 8);
-        eocd.writeUInt16LE(entries.length, 10);
-        eocd.writeUInt32LE(cdBuf.length, 12);
-        eocd.writeUInt32LE(offset, 16);
-        eocd.writeUInt16LE(0, 20);
-
-        const zipBuffer = Buffer.concat([...localHeaders, cdBuf, eocd]);
-        res.setHeader('Content-Length', zipBuffer.length);
-        res.end(zipBuffer);
+        await archive.finalize();
 
         audit.log('ZIP_FILES', {
             userId: req.headers['x-user-id'] || null,
             username: req.headers['x-user-name'] || null,
             fileCount: entries.length,
             skippedCount: skipReasons.length,
-            ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '',
+            ip: getClientIp(req),
         });
     } catch (error) {
         logger.error('Error creating zip', { error: error.message });

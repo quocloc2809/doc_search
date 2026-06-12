@@ -51,8 +51,13 @@ export async function downloadLegacyIncomingFile(documentId, { db, year } = {}) 
 }
 
 export async function zipFiles(items) {
+  const zipTimeoutMs = Number(import.meta.env.VITE_ZIP_TIMEOUT_MS || 600000)
+
   try {
-    const response = await httpClient.post('/api/files/zip', { items }, { responseType: 'blob' })
+    const response = await httpClient.post('/api/files/zip', { items }, {
+      responseType: 'blob',
+      timeout: zipTimeoutMs,
+    })
     return {
       blob: response.data,
       fileName: 'VanBanTongHop.zip',

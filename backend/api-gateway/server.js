@@ -65,11 +65,11 @@ app.use(cors({
         return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
-    exposedHeaders: ['Content-Disposition', 'X-Merged-Count', 'X-Skipped-Count'],
+    exposedHeaders: ['Content-Disposition', 'X-File-Count', 'X-Merged-Count', 'X-Skipped-Count'],
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 function verifyAccessToken(req, res, next) {
     if (!REQUIRE_AUTH) {
@@ -398,9 +398,13 @@ app.use('/api/departments', verifyAccessToken, createProxyMiddleware({
 }));
 
 // Files Service
+const FILES_PROXY_TIMEOUT_MS = Number(process.env.FILES_PROXY_TIMEOUT_MS || 600000);
+
 app.use('/api/files', verifyAccessToken, createProxyMiddleware({
     target: SERVICES.FILES,
-    ...proxyOptions
+    ...proxyOptions,
+    proxyTimeout: FILES_PROXY_TIMEOUT_MS,
+    timeout: FILES_PROXY_TIMEOUT_MS,
 }));
 
 // 404 handler
