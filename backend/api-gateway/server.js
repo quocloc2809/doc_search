@@ -64,7 +64,8 @@ app.use(cors({
 
         return callback(new Error('Not allowed by CORS'));
     },
-    credentials: true
+    credentials: true,
+    exposedHeaders: ['Content-Disposition', 'X-Merged-Count', 'X-Skipped-Count'],
 }));
 
 app.use(express.json());

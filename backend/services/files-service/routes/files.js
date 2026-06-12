@@ -355,11 +355,11 @@ router.post('/merge', async (req, res) => {
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
         const mergedPdf = await PDFDocument.create();
         let mergedCount = 0;
-        const skipped = [];
+        const skipReasons = [];
 
         for (const item of items) {
             const documentId = parseInt(item.documentId, 10);
-            if (isNaN(documentId)) { skipped.push(item.documentId); continue; }
+            if (isNaN(documentId)) { skipReasons.push({ id: item.documentId, reason: 'invalid_id' }); continue; }
 
             const tableName = item.type === 'outgoing' ? 'WF_Outgoing_Doc_Files' : 'WF_Incoming_Doc_Files';
 
@@ -371,40 +371,67 @@ router.post('/merge', async (req, res) => {
                     year: item.year,
                 });
 
-                if (!fileRec) { skipped.push(documentId); continue; }
+                if (!fileRec) {
+                    logger.warn('Merge: no DB record', { documentId, tableName, db: item.db, year: item.year });
+                    skipReasons.push({ id: documentId, reason: 'no_db_record', tableName, db: item.db, year: item.year });
+                    continue;
+                }
+
+                const rawFileName = fileRec.FileName || '';
+                logger.debug('Merge: DB record found', { documentId, rawFileName, contentType: fileRec.ContentType });
 
                 let relativePath;
                 try {
-                    relativePath = toSafeRelativePath(fileRec.FileName || '');
-                } catch {
-                    skipped.push(documentId); continue;
+                    relativePath = toSafeRelativePath(rawFileName);
+                } catch (e) {
+                    skipReasons.push({ id: documentId, reason: 'invalid_path', rawFileName });
+                    continue;
                 }
 
                 const fullPath = path.resolve(storageRoot, relativePath);
-                if (!isPathInsideRoot(storageRoot, fullPath) || !fs.existsSync(fullPath)) {
-                    logger.warn('Merge: file not found on disk', { documentId, fullPath });
-                    skipped.push(documentId); continue;
+
+                if (!isPathInsideRoot(storageRoot, fullPath)) {
+                    skipReasons.push({ id: documentId, reason: 'path_traversal', relativePath });
+                    continue;
+                }
+
+                if (!fs.existsSync(fullPath)) {
+                    logger.warn('Merge: file not found on disk', { documentId, fullPath, storageRoot, relativePath });
+                    skipReasons.push({ id: documentId, reason: 'file_not_on_disk', relativePath: IS_PRODUCTION ? '(hidden)' : relativePath });
+                    continue;
                 }
 
                 const fileBytes = fs.readFileSync(fullPath);
                 let srcPdf;
                 try {
                     srcPdf = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
-                } catch {
-                    logger.warn('Merge: file is not a valid PDF', { documentId, fullPath });
-                    skipped.push(documentId); continue;
+                } catch (loadErr) {
+                    const ext = path.extname(fullPath).toLowerCase();
+                    logger.warn('Merge: file is not a valid PDF', { documentId, fullPath, ext, loadErr: loadErr.message });
+                    skipReasons.push({ id: documentId, reason: 'not_pdf', ext });
+                    continue;
                 }
 
                 const copiedPages = await mergedPdf.copyPagesFrom(srcPdf, srcPdf.getPageIndices());
                 copiedPages.forEach(page => mergedPdf.addPage(page));
                 mergedCount += 1;
-            } catch {
-                skipped.push(documentId);
+            } catch (itemErr) {
+                logger.error('Merge: unexpected error for item', { documentId, error: itemErr.message });
+                skipReasons.push({ id: documentId, reason: 'unexpected_error', error: IS_PRODUCTION ? undefined : itemErr.message });
             }
         }
 
         if (mergedCount === 0) {
-            return res.status(422).json({ success: false, message: 'Không có file PDF nào có thể merge', skipped });
+            const reasons = [...new Set(skipReasons.map(s => s.reason))];
+            let message = 'Không có file PDF nào có thể merge';
+            if (reasons.includes('not_pdf')) {
+                message = 'Các file đã chọn không phải định dạng PDF, không thể merge';
+            } else if (reasons.includes('file_not_on_disk')) {
+                message = 'Không tìm thấy file trên máy chủ';
+            } else if (reasons.includes('no_db_record')) {
+                message = 'Không tìm thấy thông tin file trong cơ sở dữ liệu';
+            }
+            return res.status(422).json({ success: false, message, skipReasons: IS_PRODUCTION ? reasons : skipReasons });
         }
 
         const mergedBytes = await mergedPdf.save();
@@ -413,14 +440,14 @@ router.post('/merge', async (req, res) => {
             userId: req.headers['x-user-id'] || null,
             username: req.headers['x-user-name'] || null,
             mergedCount,
-            skipped,
+            skippedCount: skipReasons.length,
             ip: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '',
         });
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename="VanBanTongHop.pdf"');
         res.setHeader('X-Merged-Count', mergedCount);
-        res.setHeader('X-Skipped-Count', skipped.length);
+        res.setHeader('X-Skipped-Count', skipReasons.length);
         res.end(Buffer.from(mergedBytes));
     } catch (error) {
         logger.error('Error merging files', { error: error.message });
