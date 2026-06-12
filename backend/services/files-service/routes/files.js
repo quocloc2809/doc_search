@@ -348,8 +348,8 @@ router.post('/merge', async (req, res) => {
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ success: false, message: 'Danh sách văn bản không hợp lệ' });
         }
-        if (items.length > 100) {
-            return res.status(400).json({ success: false, message: 'Tối đa 100 văn bản mỗi lần merge' });
+        if (items.length > 10000) {
+            return res.status(400).json({ success: false, message: 'Tối đa 10000 văn bản mỗi lần merge' });
         }
 
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
