@@ -51,8 +51,13 @@ export async function downloadLegacyIncomingFile(documentId, { db, year } = {}) 
 }
 
 export async function zipFiles(items) {
+  const zipTimeoutMs = Number(import.meta.env.VITE_ZIP_TIMEOUT_MS || 600000)
+
   try {
-    const response = await httpClient.post('/api/files/zip', { items }, { responseType: 'blob' })
+    const response = await httpClient.post('/api/files/zip', { items }, {
+      responseType: 'blob',
+      timeout: zipTimeoutMs,
+    })
     return {
       blob: response.data,
       fileName: 'VanBanTongHop.zip',
@@ -61,6 +66,12 @@ export async function zipFiles(items) {
       skippedCount: parseInt(response.headers['x-skipped-count'] || '0', 10),
     }
   } catch (err) {
+    if (err?.code === 'ECONNABORTED') {
+      throw new Error('Tải ZIP quá thời gian chờ. Vui lòng thử lại hoặc chọn ít văn bản hơn.')
+    }
+    if (err?.response?.status === 413) {
+      throw new Error('Danh sách văn bản quá lớn. Vui lòng thử chọn ít hơn.')
+    }
     if (err?.response?.data instanceof Blob) {
       try {
         const text = await err.response.data.text()
