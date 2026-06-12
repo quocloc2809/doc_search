@@ -359,14 +359,15 @@ export default function IncomingDocumentsPage() {
                 type: 'incoming',
                 db: doc.SourceDb || undefined,
                 year: filters.year !== 'all' ? filters.year : undefined,
+                title: buildDocumentDownloadTitle(doc.DocumentNo, doc.ReceivedDate || doc.CreatedDate),
             }));
             const result = await mergeBulkDownload(items);
             const skipped = result?.skippedCount || 0;
-            const merged = result?.mergedCount || 0;
+            const count = result?.fileCount || 0;
             if (skipped > 0) {
-                toast.success(`Đã merge ${merged} văn bản (bỏ qua ${skipped} file không phải PDF)`);
+                toast.success(`Đã tạo file ZIP gồm ${count} văn bản (bỏ qua ${skipped} file không tìm thấy)`);
             } else {
-                toast.success(`Đã tạo file tổng hợp ${merged} văn bản`);
+                toast.success(`Đã tải xuống ZIP gồm ${count} văn bản`);
             }
         } catch (err) {
             toast.error(err?.message || 'Không thể merge văn bản');

@@ -50,24 +50,22 @@ export async function downloadLegacyIncomingFile(documentId, { db, year } = {}) 
   return downloadFileByPath(`/api/files/download/${documentId}`, { params })
 }
 
-export async function mergeFiles(items) {
+export async function zipFiles(items) {
   try {
-    const response = await httpClient.post('/api/files/merge', { items }, { responseType: 'blob' })
+    const response = await httpClient.post('/api/files/zip', { items }, { responseType: 'blob' })
     return {
       blob: response.data,
-      fileName: 'VanBanTongHop.pdf',
-      contentType: 'application/pdf',
-      mergedCount: parseInt(response.headers['x-merged-count'] || '0', 10),
+      fileName: 'VanBanTongHop.zip',
+      contentType: 'application/zip',
+      fileCount: parseInt(response.headers['x-file-count'] || '0', 10),
       skippedCount: parseInt(response.headers['x-skipped-count'] || '0', 10),
     }
   } catch (err) {
-    // When responseType is 'blob', axios returns error.response.data as a Blob.
-    // Parse it to JSON to get the real server error message.
     if (err?.response?.data instanceof Blob) {
       try {
         const text = await err.response.data.text()
         const json = JSON.parse(text)
-        const enhanced = new Error(json.message || 'Merge file thất bại')
+        const enhanced = new Error(json.message || 'Tải file thất bại')
         enhanced.response = { ...err.response, data: json }
         throw enhanced
       } catch (parseErr) {

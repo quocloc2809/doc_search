@@ -81,11 +81,11 @@ export function useFileDownload() {
     setIsDownloading(true)
     setError('')
     try {
-      const result = await filesApi.mergeFiles(items)
+      const result = await filesApi.zipFiles(items)
       downloadBlob({ blob: result.blob, fileName: result.fileName })
       return result
     } catch (apiError) {
-      const message = apiError?.message || apiError?.response?.data?.message || 'Merge file thất bại'
+      const message = apiError?.message || apiError?.response?.data?.message || 'Tải file thất bại'
       setError(message)
       throw apiError
     } finally {
