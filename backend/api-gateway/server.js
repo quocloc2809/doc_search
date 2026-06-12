@@ -26,7 +26,15 @@ if (IS_PRODUCTION) {
 }
 
 app.use(helmet());
-app.use(compression());
+app.use(compression({
+    filter: (req, res) => {
+        // ZIP/binary streams must not be gzip-compressed by the gateway.
+        if (String(req.path || '').startsWith('/api/files')) {
+            return false;
+        }
+        return compression.filter(req, res);
+    },
+}));
 
 const apiRateLimiter = rateLimit({
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
@@ -417,6 +425,14 @@ app.use('*', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
+    if (err.type === 'entity.too.large') {
+        logger.warn('Request payload too large', { path: req.path, limit: err.limit, length: err.length });
+        return res.status(413).json({
+            success: false,
+            message: 'Danh sách văn bản quá lớn. Vui lòng thử chọn ít hơn hoặc liên hệ quản trị viên.',
+        });
+    }
+
     logger.error('Gateway internal error', { error: err.message, stack: err.stack });
     res.status(500).json({
         success: false,

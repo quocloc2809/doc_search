@@ -16,7 +16,8 @@ module.exports = {
                 AUTH_SERVICE_URL: 'http://localhost:3002',
                 DOCUMENTS_SERVICE_URL: 'http://localhost:3003',
                 DEPARTMENTS_SERVICE_URL: 'http://localhost:3004',
-                FILES_SERVICE_URL: 'http://localhost:3005'
+                FILES_SERVICE_URL: 'http://localhost:3005',
+                FILES_PROXY_TIMEOUT_MS: '600000'
             },
             error_file: './logs/api-gateway-error.log',
             out_file: './logs/api-gateway-out.log',

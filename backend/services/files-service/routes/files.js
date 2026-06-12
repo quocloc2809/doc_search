@@ -8,6 +8,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const createLogger = require('../../../shared/utils/logger');
 const audit = require('../../../shared/utils/auditLogger');
 const logger = createLogger('files');
+const fsPromises = fs.promises;
 
 async function querySingleFileRecord(pool, { tableName, documentId }) {
     const result = await pool
@@ -142,6 +143,36 @@ async function fetchFileRecordsForGroup(groupKey, groupedItems) {
     return recordMap;
 }
 
+async function fileExistsReadable(fullPath) {
+    try {
+        await fsPromises.access(fullPath, fs.constants.R_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function appendEntryToArchive(archive, fullPath, zipName) {
+    return new Promise((resolve, reject) => {
+        const source = fs.createReadStream(fullPath);
+        source.on('error', reject);
+        archive.append(source, {
+            name: zipName,
+            callback: resolve,
+        });
+    });
+}
+
+async function streamEntriesIntoArchive(archive, entries) {
+    for (let i = 0; i < entries.length; i += 1) {
+        const { fullPath, zipName } = entries[i];
+        await appendEntryToArchive(archive, fullPath, zipName);
+        if ((i + 1) % 500 === 0 || i + 1 === entries.length) {
+            logger.info('Zip streaming progress', { processed: i + 1, total: entries.length });
+        }
+    }
+}
+
 async function resolveZipEntries(items, storageRoot) {
     const skipReasons = [];
     const addedNames = new Set();
@@ -203,7 +234,7 @@ async function resolveZipEntries(items, storageRoot) {
                     skipReasons.push({ id: documentId, reason: 'path_traversal' });
                     continue;
                 }
-                if (!fs.existsSync(fullPath)) {
+                if (!(await fileExistsReadable(fullPath))) {
                     logger.warn('Zip: file not found on disk', { documentId, fullPath });
                     skipReasons.push({ id: documentId, reason: 'file_not_on_disk' });
                     continue;
@@ -509,8 +540,8 @@ router.get('/download/:documentId', async (req, res) => {
 
 // Nén nhiều văn bản thành 1 file ZIP (stream qua archiver, không load toàn bộ vào RAM)
 router.post('/zip', async (req, res) => {
+    const items = req.body?.items;
     try {
-        const items = req.body?.items;
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ success: false, message: 'Danh sách văn bản không hợp lệ' });
         }
@@ -518,8 +549,16 @@ router.post('/zip', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Tối đa 10000 văn bản mỗi lần tải' });
         }
 
+        logger.info('Zip request started', { requestedCount: items.length });
+
         const storageRoot = process.env.FILE_STORAGE_ROOT || path.join(__dirname, '..', 'uploads');
         const { entries, skipReasons } = await resolveZipEntries(items, storageRoot);
+
+        logger.info('Zip entries resolved', {
+            requestedCount: items.length,
+            entryCount: entries.length,
+            skippedCount: skipReasons.length,
+        });
 
         if (entries.length === 0) {
             return res.status(422).json({ success: false, message: 'Không tìm thấy file nào để tải', skipReasons: IS_PRODUCTION ? [...new Set(skipReasons.map(s => s.reason))] : skipReasons });
@@ -530,16 +569,16 @@ router.post('/zip', async (req, res) => {
         res.setHeader('X-File-Count', String(entries.length));
         res.setHeader('X-Skipped-Count', String(skipReasons.length));
 
-        const archive = archiver('zip', { zlib: { level: 6 } });
+        const archive = archiver('zip', { zlib: { level: 1 } });
 
         archive.on('warning', (err) => {
             if (err.code !== 'ENOENT') {
-                logger.error('Zip archive warning', { error: err.message });
+                logger.error('Zip archive warning', { error: err.message, code: err.code });
             }
         });
 
         archive.on('error', (err) => {
-            logger.error('Zip archive error', { error: err.message });
+            logger.error('Zip archive error', { error: err.message, stack: err.stack, code: err.code });
             if (!res.headersSent) {
                 res.status(500).json({ success: false, message: 'Server error', error: IS_PRODUCTION ? 'Internal server error' : err.message });
             } else {
@@ -549,11 +588,10 @@ router.post('/zip', async (req, res) => {
 
         archive.pipe(res);
 
-        for (const { fullPath, zipName } of entries) {
-            archive.file(fullPath, { name: zipName });
-        }
-
+        await streamEntriesIntoArchive(archive, entries);
         await archive.finalize();
+
+        logger.info('Zip request completed', { entryCount: entries.length, skippedCount: skipReasons.length });
 
         audit.log('ZIP_FILES', {
             userId: req.headers['x-user-id'] || null,
@@ -563,7 +601,12 @@ router.post('/zip', async (req, res) => {
             ip: getClientIp(req),
         });
     } catch (error) {
-        logger.error('Error creating zip', { error: error.message });
+        logger.error('Error creating zip', {
+            error: error.message,
+            stack: error.stack,
+            code: error.code,
+            requestedCount: Array.isArray(items) ? items.length : 0,
+        });
         if (!res.headersSent) {
             res.status(500).json({ success: false, message: 'Server error', error: IS_PRODUCTION ? 'Internal server error' : error.message });
         }

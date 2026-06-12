@@ -56,6 +56,14 @@ app.use('/api/files', filesRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
+    if (err.type === 'entity.too.large') {
+        logger.warn('Request payload too large', { path: req.path, limit: err.limit, length: err.length });
+        return res.status(413).json({
+            success: false,
+            message: 'Danh sách văn bản quá lớn. Vui lòng thử chọn ít hơn hoặc liên hệ quản trị viên.',
+        });
+    }
+
     logger.error('Files service internal error', { error: err.message, stack: err.stack });
     res.status(500).json({
         success: false,
