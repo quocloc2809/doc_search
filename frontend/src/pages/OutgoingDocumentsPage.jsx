@@ -336,7 +336,12 @@ export default function OutgoingDocumentsPage() {
             }
         } catch (err) {
             toast.error(err?.message || 'Không thể merge văn bản');
-        } finally { = useCallback(() => {
+        } finally {
+            setIsBulkDownloading(false);
+        }
+    }, [filteredDocuments, selectedIds, mergeBulkDownload, filters.year]);
+
+    const handleExport = useCallback(() => {
         if (filteredDocuments.length === 0) {
             toast.error('Không có dữ liệu để xuất');
             return;
