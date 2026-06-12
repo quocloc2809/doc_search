@@ -412,7 +412,7 @@ router.post('/merge', async (req, res) => {
                     continue;
                 }
 
-                const copiedPages = await mergedPdf.copyPagesFrom(srcPdf, srcPdf.getPageIndices());
+                const copiedPages = await mergedPdf.copyPages(srcPdf, srcPdf.getPageIndices());
                 copiedPages.forEach(page => mergedPdf.addPage(page));
                 mergedCount += 1;
             } catch (itemErr) {
